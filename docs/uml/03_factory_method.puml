@@ -1,0 +1,66 @@
+@startuml factory_method
+!include estilo.iuml
+title Factory Method: un creador por tipo de envío (creadores.py)
+skinparam linetype polyline
+
+abstract class EnvioCreator <<Creator>> {
+  +tarifa : Tarifa
+  --
+  +crear_envio(numero_guia, cliente, sucursal_origen, direccion_destino, paquetes, seguro, **extra) : Envio
+  #_validar(numero_guia, direccion_destino, paquetes, seguro)
+  #_validar_extra(paquetes, **extra)
+  #{abstract} _fabricar(**datos) : Envio
+}
+class EnvioNacionalCreator <<ConcreteCreator>> {
+  #_fabricar(**datos) : Envio
+}
+class EnvioExpressCreator <<ConcreteCreator>> {
+  +PESO_MAXIMO_KG : Decimal
+  #_validar_extra(paquetes, **extra)
+  #_fabricar(**datos) : Envio
+}
+class EnvioInternacionalCreator <<ConcreteCreator>> {
+  #_validar_extra(paquetes, pais_destino, **extra)
+  #_fabricar(**datos) : Envio
+}
+abstract class Envio <<Product>> {
+  +{static} tipo : TipoEnvio
+  +{static} admite_aduana : bool
+  +tarifa : Tarifa
+}
+class EnvioNacional <<ConcreteProduct>>
+class EnvioExpress <<ConcreteProduct>>
+class EnvioInternacional <<ConcreteProduct>> {
+  +pais_destino : str
+}
+class Tarifa {
+  +fija : Decimal
+  +por_kg : Decimal
+  +tasa_seguro : Decimal
+  +recargo_fragil : Decimal
+}
+enum TipoEnvio {
+  NACIONAL
+  INTERNACIONAL
+  EXPRESS
+}
+
+EnvioCreator <|-- EnvioNacionalCreator
+EnvioCreator <|-- EnvioExpressCreator
+EnvioCreator <|-- EnvioInternacionalCreator
+Envio <|-- EnvioNacional
+Envio <|-- EnvioExpress
+Envio <|-- EnvioInternacional
+EnvioNacionalCreator ..> EnvioNacional : crea
+EnvioExpressCreator ..> EnvioExpress : crea
+EnvioInternacionalCreator ..> EnvioInternacional : crea
+EnvioCreator --> "1" Tarifa
+Envio --> "1" Tarifa
+Envio ..> TipoEnvio
+
+note bottom of EnvioCreator
+  ""CLASES_CREADOR: dict[TipoEnvio, type[EnvioCreator]]""
+  Agregar un tipo = un creador nuevo + una entrada.
+  Sin if/elif por tipo (DT-1). Valida antes de crear (DT-6).
+end note
+@enduml

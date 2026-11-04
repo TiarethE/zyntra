@@ -1,0 +1,114 @@
+@startuml dominio
+!include estilo.iuml
+title Modelo del dominio (v1.0)
+skinparam linetype polyline
+
+enum Rol {
+  CLIENTE
+  EMPLEADO_SUCURSAL
+  REPARTIDOR
+  ADMINISTRADOR
+}
+class Usuario {
+  +id_usuario : int
+  +nombre : str
+  +email : str
+  +rol : Rol
+  --
+  +establecer_contrasena(contrasena : str)
+  +autenticar(contrasena : str) : bool
+}
+class Cliente {
+  +direccion : str
+  +telefono : str
+}
+class Empleado {
+  +sucursal : Sucursal
+}
+abstract class PuntoLogistico {
+  +id_punto : int
+  +nombre : str
+  +direccion : str
+  +ciudad : str
+}
+class Sucursal {
+  +atiende_publico : bool
+}
+class Bodega {
+  +capacidad_maxima : int
+  +vehiculos : list[Vehiculo]
+  --
+  +vehiculos_disponibles() : list[Vehiculo]
+}
+class Vehiculo {
+  +placas : str
+  +capacidad_carga_kg : float
+  +disponible : bool
+}
+abstract class Envio {
+  +numero_guia : str
+  +direccion_destino : str
+  +estado : NombreEstado
+  +peso_facturable_kg : Decimal
+  +valor_declarado : Decimal
+  +paquetes_fragiles : int
+  +asegurado : bool
+  --
+  +cambiar_estado(destino : NombreEstado, ...) : RegistroRastreo
+  +calcular_costo() : Decimal
+}
+class EnvioNacional
+class EnvioExpress
+class EnvioInternacional {
+  +pais_destino : str
+}
+class Paquete {
+  +peso_kg : Decimal
+  +alto_cm : Decimal
+  +ancho_cm : Decimal
+  +largo_cm : Decimal
+  +contenido : str
+  +valor_declarado : Decimal
+  +fragil : bool
+  --
+  +peso_volumetrico_kg : Decimal
+  +peso_facturable_kg : Decimal
+}
+class Seguro {
+  +numero_poliza : str
+}
+class RegistroRastreo {
+  +numero_guia : str
+  +marca_tiempo : datetime
+  +estado : str
+  +descripcion : str
+  +latitud : float
+  +longitud : float
+}
+class ServicioExterno {
+  +empresa_transportista : str
+  +tipo_transporte : str
+  +numero_guia_externo : str
+  +costo_contrato : Decimal
+}
+
+Usuario <|-- Cliente
+Usuario <|-- Empleado
+Usuario --> "1" Rol
+PuntoLogistico <|-- Sucursal
+PuntoLogistico <|-- Bodega
+Empleado --> "1" Sucursal : trabaja en
+Bodega *-- "0..*" Vehiculo : opera
+
+Envio <|-- EnvioNacional
+Envio <|-- EnvioExpress
+Envio <|-- EnvioInternacional
+Cliente "1" <-- "0..*" Envio : solicita
+Envio "0..*" --> "1" Sucursal : se recibe en
+Envio *-- "1..*" Paquete : contiene
+Envio o-- "0..1" Seguro : protegido por
+Envio *-- "1..*" RegistroRastreo : registra
+Envio *-- "0..*" ServicioExterno : subcontrata
+RegistroRastreo --> "0..1" PuntoLogistico : escaneado en
+RegistroRastreo --> "0..1" Usuario : responsable
+@enduml

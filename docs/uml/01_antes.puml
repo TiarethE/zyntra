@@ -1,0 +1,36 @@
+@startuml antes
+!include estilo.iuml
+title ANTES (v0.1): una sola clase concentra datos, costos y estados
+class "Envio" as Envio <<Legado>> {
+  +numero_guia : str
+  +destino : str
+  +tipo : str
+  +peso : float
+  +fragil : bool
+  +asegurado : bool
+  +valor_declarado : float
+  +estado : str
+  --
+  +calcular_costo() : int
+  +cambiar_estado(nuevo_estado : str) : bool
+}
+note left of Envio
+  <b>DT-4 · Clase con demasiadas responsabilidades</b>
+  Datos, costos y ciclo de vida cambian
+  por razones distintas pero viven juntos.
+  <b>DT-6 · Sin validación</b>
+  Acepta peso negativo y guía vacía.
+end note
+note right of Envio
+  <b>DT-1 · DT-2 · DT-5</b>
+  ""tipo"" es texto libre; el if/elif por tipo
+  se repite 3 veces y las tarifas están
+  escritas dentro del método.
+  ""int()"" trunca los centavos.
+end note
+note bottom of Envio
+  <b>DT-3 · if/elif anidados sobre el estado</b>
+  Las transiciones se deciden a mano.
+  <b>DT-7 · Nadie se entera de los cambios</b>
+end note
+@enduml

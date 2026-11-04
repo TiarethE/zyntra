@@ -1,0 +1,53 @@
+@startuml state
+!include estilo.iuml
+title State: cada estado es una clase que conoce sus transiciones (estados.py)
+
+class Envio <<Context>> {
+  -_estado : EstadoEnvio
+  +estado : NombreEstado
+  +{static} admite_aduana : bool
+  --
+  +puede_ir_a(destino : NombreEstado) : bool
+  +cambiar_estado(destino : NombreEstado, ...) : RegistroRastreo
+}
+abstract class EstadoEnvio <<State>> {
+  +{static} nombre : NombreEstado
+  +{static} destinos : frozenset[NombreEstado]
+  +es_final : bool
+  --
+  +puede_ir_a(envio : Envio, destino : NombreEstado) : bool
+  +transicionar(envio : Envio, destino : NombreEstado) : EstadoEnvio
+}
+class Registrado <<ConcreteState>>
+class EnTransito <<ConcreteState>> {
+  +puede_ir_a(envio : Envio, destino : NombreEstado) : bool
+}
+class RetenidoEnAduana <<ConcreteState>>
+class EnReparto <<ConcreteState>>
+class Entregado <<ConcreteState>>
+class Cancelado <<ConcreteState>>
+enum NombreEstado {
+  REGISTRADO
+  EN_TRANSITO
+  RETENIDO_EN_ADUANA
+  EN_REPARTO
+  ENTREGADO
+  CANCELADO
+}
+class TransicionInvalida <<Exception>>
+
+Envio o--> "1" EstadoEnvio : estado actual
+EstadoEnvio <|-- Registrado
+EstadoEnvio <|-- EnTransito
+EstadoEnvio <|-- RetenidoEnAduana
+EstadoEnvio <|-- EnReparto
+EstadoEnvio <|-- Entregado
+EstadoEnvio <|-- Cancelado
+EstadoEnvio ..> NombreEstado
+EstadoEnvio ..> TransicionInvalida : lanza
+
+note right of EnTransito
+  Regla propia: solo pasa a «Retenido en aduana»
+  si ""envio.admite_aduana"" (internacionales).
+end note
+@enduml

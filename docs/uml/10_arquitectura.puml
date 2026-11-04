@@ -1,0 +1,43 @@
+@startuml arquitectura
+!include estilo.iuml
+title Arquitectura por capas de Zyntra
+skinparam linetype polyline
+skinparam componentStyle rectangle
+skinparam ComponentBackgroundColor #F7F8FA
+skinparam ComponentBorderColor #3B4252
+
+package "Presentación" {
+  [demo.py\n(demostración de consola)] as Demo
+}
+package "Aplicación" {
+  [GestorEnvios\n(gestor.py)] as Gestor
+}
+package "Lógica de negocio" {
+  [Creadores\nFactory Method] as Fab
+  [Envíos\n(envios.py)] as Env
+  [Cálculo de costo\nDecorator] as Cost
+  [Estados\nState] as Est
+  [Tarifas\n(tarifas.py)] as TarPy
+}
+package "Dominio" {
+  [Usuarios, Paquete, Seguro,\nRastreo, Puntos logísticos] as Dom
+}
+package "Infraestructura" {
+  [Bus de eventos\nObserver (asyncio)] as Bus
+  [Notificadores] as Not
+  [tarifas.json] as Tar
+}
+
+Demo --> Gestor
+Gestor --> Fab
+Gestor --> Env
+Gestor --> Bus : publica CambioEstado
+Fab --> Env : crea
+Env --> Cost
+Env --> Est
+Env --> Dom
+Demo --> TarPy : cargar_tarifas()
+Fab --> TarPy : usa Tarifa
+TarPy --> Tar : lee
+Bus --> Not : notifica
+@enduml

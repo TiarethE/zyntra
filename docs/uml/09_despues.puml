@@ -1,0 +1,78 @@
+@startuml despues
+!include estilo.iuml
+title DESPUÉS (v1.0): responsabilidades separadas en cuatro patrones
+skinparam linetype polyline
+set separator none
+hide empty members
+
+package "Factory Method (creadores.py)" {
+  abstract class EnvioCreator <<Creator>>
+  class EnvioNacionalCreator <<ConcreteCreator>>
+  class EnvioInternacionalCreator <<ConcreteCreator>>
+  class EnvioExpressCreator <<ConcreteCreator>>
+}
+package "Envíos (envios.py)" {
+  abstract class Envio <<Product>> {
+    +numero_guia : str
+    +paquetes : tuple[Paquete, ...]
+    +tarifa : Tarifa
+    -_estado : EstadoEnvio
+    -_rastreo : list[RegistroRastreo]
+  }
+  class EnvioNacional <<ConcreteProduct>>
+  class EnvioInternacional <<ConcreteProduct>>
+  class EnvioExpress <<ConcreteProduct>>
+}
+package "Decorator (costos.py)" {
+  abstract class CalculadoraCosto <<Component>>
+  class CostoBase <<ConcreteComponent>>
+  abstract class DecoradorCosto <<Decorator>>
+  class SeguroDecorator <<ConcreteDecorator>>
+  class ManejoFragilDecorator <<ConcreteDecorator>>
+}
+package "State (estados.py)" {
+  abstract class EstadoEnvio <<State>>
+  class Registrado <<ConcreteState>>
+  class EnTransito <<ConcreteState>>
+  class RetenidoEnAduana <<ConcreteState>>
+  class EnReparto <<ConcreteState>>
+  class Entregado <<ConcreteState>>
+  class Cancelado <<ConcreteState>>
+}
+package "Observer (eventos.py)" {
+  class BusEventos <<Subject>>
+  abstract class Suscriptor <<Observer>>
+  class NotificadorCliente <<ConcreteObserver>>
+  class PanelRastreo <<ConcreteObserver>>
+}
+class GestorEnvios
+class Tarifa
+
+EnvioCreator <|-- EnvioNacionalCreator
+EnvioCreator <|-- EnvioInternacionalCreator
+EnvioCreator <|-- EnvioExpressCreator
+Envio <|-- EnvioNacional
+Envio <|-- EnvioInternacional
+Envio <|-- EnvioExpress
+EnvioCreator ..> Envio : crea
+Envio --> Tarifa
+CalculadoraCosto <|-- CostoBase
+CalculadoraCosto <|-- DecoradorCosto
+DecoradorCosto o--> CalculadoraCosto
+DecoradorCosto <|-- SeguroDecorator
+DecoradorCosto <|-- ManejoFragilDecorator
+Envio ..> CalculadoraCosto : compone
+Envio o--> EstadoEnvio : estado actual
+EstadoEnvio <|-- Registrado
+EstadoEnvio <|-- EnTransito
+EstadoEnvio <|-- RetenidoEnAduana
+EstadoEnvio <|-- EnReparto
+EstadoEnvio <|-- Entregado
+EstadoEnvio <|-- Cancelado
+BusEventos o--> Suscriptor
+Suscriptor <|-- NotificadorCliente
+Suscriptor <|-- PanelRastreo
+GestorEnvios --> EnvioCreator : registrar_envio
+GestorEnvios --> Envio : cambiar_estado
+GestorEnvios --> BusEventos : publicar
+@enduml
