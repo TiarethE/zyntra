@@ -1,0 +1,30 @@
+# Registro de cambios
+
+Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado semántico.
+
+## [1.0.0] - 2026-11-04
+
+### Agregado
+- Clases del dominio: Usuario, Cliente, Empleado con roles, Paquete, Seguro, RegistroRastreo, ServicioExterno, Sucursal, Bodega y Vehiculo.
+- Tarifas en `zyntra/datos/tarifas.json`, en lempiras (HNL), con `Decimal`.
+- Factory Method: un creador por tipo de envío que valida los datos antes de crearlo.
+- Decorator: costo base más capas de seguro y manejo frágil.
+- State: una clase por estado del envío, incluido «Retenido en aduana» solo para internacionales.
+- Observer: bus de eventos asíncrono con cola limitada y tiempo límite por suscriptor.
+- GestorEnvios como punto de entrada que une los patrones.
+- Demostración ejecutable y 45 pruebas automáticas.
+
+### Cambiado
+- La clase original se movió a `legado/` y sus pruebas de caracterización confirman que la v1.0 da los mismos costos y transiciones.
+- El peso del envío es la suma de sus paquetes y se cobra el peso volumétrico cuando es mayor.
+- El recargo frágil se cobra por cada paquete frágil.
+
+### Corregido
+- El costo ya no pierde los centavos (la v0.1 los truncaba con `int`).
+- Un tipo o estado mal escrito ya no pasa en silencio: son enums.
+- No se pueden crear envíos con peso negativo, sin paquetes o sin número de guía.
+
+## [0.1.0] - 2026-11-04
+
+### Agregado
+- Versión inicial: clase `Envio` con datos, cálculo de costo y cambios de estado.
