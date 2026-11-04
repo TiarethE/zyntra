@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from abc import ABC
 from decimal import Decimal
-from typing import ClassVar, Iterable, Optional
+from typing import TYPE_CHECKING, ClassVar, Iterable, Optional
 
+from zyntra import costos
 from zyntra.dominio import (Cliente, Paquete, RegistroRastreo, Seguro,
                             ServicioExterno, Sucursal)
 from zyntra.tarifas import Tarifa, TipoEnvio
+
+if TYPE_CHECKING:
+    from zyntra.costos import CalculadoraCosto
 
 
 class Envio(ABC):
@@ -50,6 +54,13 @@ class Envio(ABC):
     @property
     def rastreo(self) -> tuple[RegistroRastreo, ...]:
         return tuple(self._rastreo)
+
+    # ---- Costo (Decorator) ----
+    def armar_calculadora(self) -> "CalculadoraCosto":
+        return costos.armar_calculadora(self)
+
+    def calcular_costo(self) -> Decimal:
+        return costos.calcular_costo(self)
 
     def agregar_servicio_externo(self, servicio: ServicioExterno) -> None:
         self.servicios_externos.append(servicio)
