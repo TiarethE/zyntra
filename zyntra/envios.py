@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, ClassVar, Iterable, Optional
 
 from zyntra import costos
-from zyntra.dominio import (Cliente, Paquete, RegistroRastreo, Seguro,
-                            ServicioExterno, Sucursal)
+from zyntra.dominio import (Cliente, Paquete, PuntoLogistico, RegistroRastreo, Seguro,
+                            ServicioExterno, Sucursal, Usuario)
+from zyntra.estados import EstadoEnvio, NombreEstado, Registrado
 from zyntra.tarifas import Tarifa, TipoEnvio
 
 if TYPE_CHECKING:
@@ -32,7 +34,10 @@ class Envio(ABC):
         self.tarifa = tarifa
         self.seguro = seguro
         self.servicios_externos: list[ServicioExterno] = []
+        self._estado: EstadoEnvio = Registrado()
         self._rastreo: list[RegistroRastreo] = []
+        self._registrar(f"Recibido en {sucursal_origen.nombre}", sucursal_origen, None,
+                        None, None, None)
 
     # ---- Datos derivados de los paquetes ----
     @property
@@ -54,6 +59,37 @@ class Envio(ABC):
     @property
     def rastreo(self) -> tuple[RegistroRastreo, ...]:
         return tuple(self._rastreo)
+
+    # ---- Estado (State) ----
+    @property
+    def estado(self) -> NombreEstado:
+        return self._estado.nombre
+
+    def puede_ir_a(self, destino: NombreEstado) -> bool:
+        return self._estado.puede_ir_a(self, destino)
+
+    def cambiar_estado(self, destino: NombreEstado, *, descripcion: str = "",
+                       punto: Optional[PuntoLogistico] = None,
+                       responsable: Optional[Usuario] = None,
+                       latitud: Optional[float] = None, longitud: Optional[float] = None,
+                       momento: Optional[datetime] = None) -> RegistroRastreo:
+        """Cambia de estado y deja el registro de rastreo en el mismo paso.
+
+        Lanza TransicionInvalida si el estado actual no permite el cambio.
+        """
+        self._estado = self._estado.transicionar(self, destino)
+        return self._registrar(descripcion or destino.value, punto, responsable,
+                               latitud, longitud, momento)
+
+    def _registrar(self, descripcion, punto, responsable, latitud, longitud,
+                   momento) -> RegistroRastreo:
+        registro = RegistroRastreo(numero_guia=self.numero_guia,
+                                   marca_tiempo=momento or datetime.now(),
+                                   estado=self.estado.value, descripcion=descripcion,
+                                   punto=punto, responsable=responsable,
+                                   latitud=latitud, longitud=longitud)
+        self._rastreo.append(registro)
+        return registro
 
     # ---- Costo (Decorator) ----
     def armar_calculadora(self) -> "CalculadoraCosto":
