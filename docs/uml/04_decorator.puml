@@ -1,0 +1,52 @@
+@startuml decorator
+!include estilo.iuml
+title Decorator: el costo se arma en capas (costos.py)
+
+abstract class CalculadoraCosto <<Component>> {
+  +{abstract} calcular() : Decimal
+  +{abstract} desglose() : list[tuple[str, Decimal]]
+}
+class CostoBase <<ConcreteComponent>> {
+  -_fija : Decimal
+  -_por_kg : Decimal
+  -_peso_kg : Decimal
+  +calcular() : Decimal
+  +desglose() : list[tuple[str, Decimal]]
+}
+abstract class DecoradorCosto <<Decorator>> {
+  -_envuelto : CalculadoraCosto
+  +calcular() : Decimal
+  +desglose() : list[tuple[str, Decimal]]
+  #{abstract} _cargo() : Decimal
+  #{abstract} _concepto() : str
+}
+class SeguroDecorator <<ConcreteDecorator>> {
+  -_tasa : Decimal
+  -_valor_declarado : Decimal
+  #_cargo() : Decimal
+  #_concepto() : str
+}
+class ManejoFragilDecorator <<ConcreteDecorator>> {
+  -_recargo : Decimal
+  -_paquetes : int
+  #_cargo() : Decimal
+  #_concepto() : str
+}
+class Envio {
+  +armar_calculadora() : CalculadoraCosto
+  +calcular_costo() : Decimal
+}
+
+CalculadoraCosto <|-- CostoBase
+CalculadoraCosto <|-- DecoradorCosto
+DecoradorCosto o--> "1" CalculadoraCosto : envuelve
+DecoradorCosto <|-- SeguroDecorator
+DecoradorCosto <|-- ManejoFragilDecorator
+Envio ..> CalculadoraCosto : compone la cadena
+
+note right of ManejoFragilDecorator
+  Ejemplo: internacional asegurado con 1 paquete frágil
+  ""ManejoFragilDecorator(SeguroDecorator(CostoBase(...)))""
+  Un extra nuevo = una subclase de DecoradorCosto (DT-4).
+end note
+@enduml

@@ -12,7 +12,8 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - State: una clase por estado del envío, incluido «Retenido en aduana» solo para internacionales.
 - Observer: bus de eventos asíncrono con cola limitada y tiempo límite por suscriptor.
 - GestorEnvios como punto de entrada que une los patrones.
-- Demostración ejecutable y 45 pruebas automáticas.
+- Demostración ejecutable y 48 pruebas automáticas.
+- Diagramas UML en `docs/uml` (antes, dominio, cada patrón, estados, secuencia, después y arquitectura) y una prueba que verifica que coinciden con el código.
 
 ### Cambiado
 - La clase original se movió a `legado/` y sus pruebas de caracterización confirman que la v1.0 da los mismos costos y transiciones.

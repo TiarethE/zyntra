@@ -1,0 +1,70 @@
+@startuml observer
+!include estilo.iuml
+title Observer: bus de eventos para el rastreo en tiempo real (eventos.py)
+skinparam linetype polyline
+
+class BusEventos <<Subject>> {
+  -_suscriptores : list[Suscriptor]
+  -_cola : asyncio.Queue[CambioEstado]
+  -_tiempo_limite : float
+  +entregados : int
+  +fallidos : int
+  +descartados : int
+  +estadisticas : dict[str, int]
+  --
+  +suscribir(suscriptor : Suscriptor)
+  +publicar(evento : CambioEstado) : bool
+  +iniciar()
+  +detener()
+  -_trabajar()
+  -_entregar(suscriptor : Suscriptor, evento : CambioEstado)
+}
+abstract class Suscriptor <<Observer>> {
+  +nombre : str
+  +{abstract} notificar(evento : CambioEstado)
+}
+class NotificadorCliente <<ConcreteObserver>> {
+  +enviados : list[tuple[str, str]]
+  +notificar(evento : CambioEstado)
+}
+class PanelRastreo <<ConcreteObserver>> {
+  +ultimo_estado : dict[str, CambioEstado]
+  +notificar(evento : CambioEstado)
+}
+class CambioEstado <<Event>> {
+  +numero_guia : str
+  +anterior : NombreEstado
+  +nuevo : NombreEstado
+  +descripcion : str
+  +destinatario : str
+  +marca_tiempo : datetime
+}
+class GestorEnvios {
+  -_creadores : dict[TipoEnvio, EnvioCreator]
+  -_bus : BusEventos
+  -_envios : dict[str, Envio]
+  --
+  +registrar_envio(tipo : TipoEnvio, **datos) : Envio
+  +obtener(numero_guia : str) : Envio
+  +cambiar_estado(numero_guia : str, destino : NombreEstado, **detalles) : RegistroRastreo
+  +rastrear(numero_guia : str) : tuple[RegistroRastreo, ...]
+}
+
+class EnvioNoEncontrado <<Exception>>
+GestorEnvios ..> EnvioNoEncontrado : lanza
+BusEventos o--> "0..*" Suscriptor : notifica
+Suscriptor <|-- NotificadorCliente
+Suscriptor <|-- PanelRastreo
+GestorEnvios --> "0..1" BusEventos : publica en
+GestorEnvios ..> CambioEstado : crea
+BusEventos ..> CambioEstado : encola
+
+note bottom of BusEventos
+  Tiempo real blando:
+  · publicar() usa put_nowait: nunca bloquea.
+  · Cola de 1000 eventos; si se llena se descarta y se cuenta.
+  · 2 s de tiempo límite por suscriptor.
+  · Los suscriptores se atienden a la vez (gather).
+  · Un suscriptor que falla no afecta a los demás.
+end note
+@enduml

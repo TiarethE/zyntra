@@ -10,7 +10,7 @@ Requiere Python 3.11 o superior. No usa librerías externas.
 
 ```bash
 python -m zyntra.demo        # demostración de punta a punta
-python -m unittest -v        # 45 pruebas automáticas
+python -m unittest -v        # 48 pruebas automáticas
 ```
 
 ## Patrones de diseño
@@ -40,7 +40,12 @@ zyntra/
   gestor.py              Capa de aplicación que une los patrones
   demo.py                Demostración
 tests/                   Pruebas automáticas
+docs/uml/                Diagramas UML (PlantUML) e imágenes en docs/uml/img
 ```
+
+## Diagramas
+
+Los diagramas de `docs/uml` se escribieron a partir del código. La prueba `tests/test_diagramas.py` comprueba que cada clase, atributo y método dibujado existe en el código, y que toda clase de `zyntra` aparece en algún diagrama. Si el código cambia y el diagrama no, la prueba falla.
 
 ## Versiones
 

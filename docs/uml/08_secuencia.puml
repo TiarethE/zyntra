@@ -1,0 +1,37 @@
+@startuml secuencia
+!include estilo.iuml
+title Cambio de estado con notificación asíncrona
+skinparam sequenceMessageAlign left
+skinparam ParticipantBackgroundColor #F7F8FA
+skinparam ParticipantBorderColor #3B4252
+autonumber
+
+actor Repartidor
+participant "gestor :\nGestorEnvios" as G
+participant "envio :\nEnvio" as E
+participant "estado :\nEnReparto" as S
+participant "bus :\nBusEventos" as B
+participant "notificador :\nNotificadorCliente" as N
+
+Repartidor -> G : cambiar_estado("ZYN-00000042", ENTREGADO, responsable=repartidor)
+G -> E : cambiar_estado(ENTREGADO, responsable=repartidor)
+E -> S : transicionar(envio, ENTREGADO)
+S -> S : puede_ir_a(envio, ENTREGADO)
+S --> E : Entregado()
+E -> E : _registrar(...) : RegistroRastreo
+note right of E : el rastreo se guarda aquí,\nantes de publicar: nunca se pierde
+E --> G : registro
+G -> B : publicar(CambioEstado)
+note right of B : put_nowait: no bloquea
+B --> G : True
+G --> Repartidor : registro
+
+== En segundo plano (tarea asyncio) ==
+B -> N : wait_for(notificar(evento), 2 s)
+alt responde a tiempo
+  N --> B : ok (entregados += 1)
+else excede el tiempo límite o falla
+  B -> B : registra aviso (fallidos += 1)
+  note right of B : el envío ya cambió de estado
+end
+@enduml

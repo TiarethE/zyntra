@@ -1,0 +1,26 @@
+@startuml maquina_estados
+!include estilo.iuml
+title Ciclo de vida del envío
+skinparam StateBackgroundColor #FCEBDD
+skinparam StateBorderColor #B85A12
+hide empty description
+skinparam linetype polyline
+left to right direction
+
+[*] --> Registrado : creado en sucursal
+Registrado --> EnTransito : sale a ruta
+Registrado --> Cancelado : cliente cancela
+EnTransito --> RetenidoEnAduana : [solo internacional]
+RetenidoEnAduana --> EnTransito : liberado
+EnTransito --> EnReparto : llega a ciudad destino
+EnReparto --> Entregado : repartidor entrega
+Entregado --> [*]
+Cancelado --> [*]
+
+state "Registrado" as Registrado
+state "En tránsito" as EnTransito
+state "Retenido en aduana" as RetenidoEnAduana
+state "En reparto" as EnReparto
+state "Entregado" as Entregado
+state "Cancelado" as Cancelado
+@enduml
