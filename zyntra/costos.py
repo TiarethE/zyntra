@@ -73,7 +73,7 @@ class SeguroDecorator(DecoradorCosto):
         return self._valor_declarado * self._tasa
 
     def _concepto(self) -> str:
-        return f"Seguro ({self._tasa * 100:g} % de {self._valor_declarado})"
+        return f"Seguro ({(self._tasa * 100).normalize():f} % de {self._valor_declarado})"
 
 
 class ManejoFragilDecorator(DecoradorCosto):
