@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Optional
 
 from zyntra.dominio.puntos import PuntoLogistico
+from zyntra.dominio.usuarios import Usuario
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -26,6 +27,7 @@ class RegistroRastreo:
     estado: str
     descripcion: str
     punto: Optional[PuntoLogistico] = None
+    responsable: Optional[Usuario] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None
 
