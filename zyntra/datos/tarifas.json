@@ -1,0 +1,6 @@
+{
+  "_moneda": "HNL",
+  "nacional":      {"fija": "80",  "por_kg": "15",  "tasa_seguro": "0.03", "recargo_fragil": "50"},
+  "internacional": {"fija": "950", "por_kg": "280", "tasa_seguro": "0.05", "recargo_fragil": "200"},
+  "express":       {"fija": "150", "por_kg": "25",  "tasa_seguro": "0.04", "recargo_fragil": "100"}
+}
