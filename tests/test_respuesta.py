@@ -173,7 +173,12 @@ class TestCircuitBreaker(unittest.TestCase):
 
 class TestCircuitBreakerEnElBus(unittest.IsolatedAsyncioTestCase):
     async def test_con_el_circuito_abierto_no_se_llama_al_suscriptor(self):
-        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60)
+        # Un solo trabajador: la prueba cuenta llamadas exactas, y con varios
+        # trabajadores las entregas que ya estaban en curso cuando el circuito
+        # seguía cerrado también llegan al servicio (en Python 3.11 wait_for
+        # crea una tarea aparte y las cinco pasan el chequeo antes del primer fallo).
+        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60,
+                         trabajadores=1)
         caido = FallaNVeces(99)
         bus.suscribir(caido)
         await bus.iniciar()
