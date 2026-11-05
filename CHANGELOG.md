@@ -6,6 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ### Agregado
 - Estrategia de ramas y flujo de revisión en `CONTRIBUTING.md`, plantilla de pull request y pruebas automáticas con GitHub Actions (#1).
+- Reintentos de notificaciones con espera exponencial y cola de fallidos que se puede reprocesar (#2).
 
 ## [1.0.0] - 2026-11-04
 

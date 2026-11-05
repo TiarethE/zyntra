@@ -38,7 +38,7 @@ async def main() -> None:
     repartidor = Empleado(id_usuario=2, nombre="Luis Martínez", email="luis@zyntra.hn",
                           sucursal=sucursal, rol=Rol.REPARTIDOR)
 
-    bus = BusEventos(tiempo_limite=0.5)
+    bus = BusEventos(tiempo_limite=0.3, max_reintentos=1, espera_base=0.05)
     correo, panel = NotificadorCliente(demora_s=0.1), PanelRastreo()
     for suscriptor in (correo, panel, NotificadorCaido()):
         bus.suscribir(suscriptor)
