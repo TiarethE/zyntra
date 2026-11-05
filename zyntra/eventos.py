@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker
 from zyntra.estados import NombreEstado
 
 log = logging.getLogger(__name__)
@@ -62,8 +63,13 @@ class BusEventos:
     def __init__(self, capacidad: int = CAPACIDAD_COLA,
                  tiempo_limite: float = TIEMPO_LIMITE_S,
                  max_reintentos: int = MAX_REINTENTOS,
-                 espera_base: float = ESPERA_BASE_S) -> None:
+                 espera_base: float = ESPERA_BASE_S,
+                 umbral_circuito: int = UMBRAL_FALLOS,
+                 espera_circuito: float = TIEMPO_ESPERA_S) -> None:
         self._suscriptores: list[Suscriptor] = []
+        self._umbral_circuito = umbral_circuito
+        self._espera_circuito = espera_circuito
+        self.circuitos: dict[str, CircuitBreaker] = {}
         self._cola: asyncio.Queue[CambioEstado] = asyncio.Queue(maxsize=capacidad)
         self._tiempo_limite = tiempo_limite
         self._max_reintentos = max_reintentos
@@ -74,9 +80,12 @@ class BusEventos:
         self.reintentos = 0
         self.fallidos = 0
         self.descartados = 0
+        self.rechazados_por_circuito = 0
 
     def suscribir(self, suscriptor: Suscriptor) -> None:
         self._suscriptores.append(suscriptor)
+        self.circuitos[suscriptor.nombre] = CircuitBreaker(self._umbral_circuito,
+                                                           self._espera_circuito)
 
     def publicar(self, evento: CambioEstado) -> bool:
         """Encola el evento sin esperar. Si la cola está llena, lo descarta."""
@@ -108,6 +117,7 @@ class BusEventos:
     def estadisticas(self) -> dict[str, int]:
         return {"entregados": self.entregados, "reintentos": self.reintentos,
                 "fallidos": self.fallidos, "descartados": self.descartados,
+                "rechazados_por_circuito": self.rechazados_por_circuito,
                 "pendientes": self._cola.qsize(), "en_cola_fallidos": len(self.cola_fallidos)}
 
     async def reprocesar_fallidos(self) -> int:
@@ -137,24 +147,36 @@ class BusEventos:
                 self._cola.task_done()
 
     async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado) -> bool:
-        """Entrega con reintentos y espera exponencial. Devuelve si se entregó."""
-        motivo = ""
+        """Entrega con reintentos y espera exponencial. Devuelve si se entregó.
+
+        Si el circuito del suscriptor está abierto, no se le llama: el aviso
+        va directo a la cola de fallidos.
+        """
+        circuito = self.circuitos[suscriptor.nombre]
+        motivo, intentos = "", 0
         for intento in range(self._max_reintentos + 1):
+            if not circuito.permite_llamada():
+                self.rechazados_por_circuito += 1
+                motivo = "circuito abierto"
+                break
             if intento:
                 self.reintentos += 1
                 await asyncio.sleep(self._espera_base * 2 ** (intento - 1))
+            intentos += 1
             try:
                 await asyncio.wait_for(suscriptor.notificar(evento), self._tiempo_limite)
+                circuito.registrar_exito()
                 self.entregados += 1
                 return True
             except asyncio.TimeoutError:
                 motivo = f"tardó más de {self._tiempo_limite}s"
             except Exception as error:  # un suscriptor que falla no detiene al bus
                 motivo = f"{type(error).__name__}: {error}"
+            circuito.registrar_fallo()
             log.warning("%s: intento %d con %s fallido (%s)", suscriptor.nombre,
                         intento + 1, evento.numero_guia, motivo)
         self.fallidos += 1
         self.cola_fallidos.append(EventoFallido(
-            evento=evento, suscriptor=suscriptor.nombre, intentos=self._max_reintentos + 1,
+            evento=evento, suscriptor=suscriptor.nombre, intentos=intentos,
             motivo=motivo, marca_tiempo=datetime.now()))
         return False

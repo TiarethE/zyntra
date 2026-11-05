@@ -10,10 +10,12 @@ class BusEventos <<Subject>> {
   -_max_reintentos : int
   -_espera_base : float
   +cola_fallidos : list[EventoFallido]
+  +circuitos : dict[str, CircuitBreaker]
   +entregados : int
   +reintentos : int
   +fallidos : int
   +descartados : int
+  +rechazados_por_circuito : int
   +estadisticas : dict[str, int]
   --
   +suscribir(suscriptor : Suscriptor)
@@ -23,6 +25,22 @@ class BusEventos <<Subject>> {
   +reprocesar_fallidos() : int
   -_trabajar()
   -_entregar(suscriptor : Suscriptor, evento : CambioEstado) : bool
+}
+class CircuitBreaker {
+  -_umbral_fallos : int
+  -_tiempo_espera : float
+  +estado : EstadoCircuito
+  +fallos_seguidos : int
+  +aperturas : int
+  --
+  +permite_llamada() : bool
+  +registrar_exito()
+  +registrar_fallo()
+}
+enum EstadoCircuito {
+  CERRADO
+  ABIERTO
+  SEMIABIERTO
 }
 class EventoFallido <<Event>> {
   +evento : CambioEstado
@@ -72,6 +90,8 @@ GestorEnvios ..> CambioEstado : crea
 BusEventos ..> CambioEstado : encola
 BusEventos *-- "0..*" EventoFallido : cola de fallidos
 EventoFallido --> "1" CambioEstado
+BusEventos *-- "0..*" CircuitBreaker : uno por suscriptor
+CircuitBreaker --> "1" EstadoCircuito
 
 note bottom of BusEventos
   Tiempo real blando:
@@ -82,5 +102,7 @@ note bottom of BusEventos
     si se agotan, el aviso pasa a la cola de fallidos.
   · Los suscriptores se atienden a la vez (gather).
   · Un suscriptor que falla no afecta a los demás.
+  · Circuit breaker: tras 5 fallos seguidos no se llama
+    al suscriptor durante 30 s.
 end note
 @enduml
