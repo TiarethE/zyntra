@@ -360,6 +360,70 @@ class TestOutbox(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(archivo.read(), "")
 
 
+class TestMetricas(unittest.IsolatedAsyncioTestCase):
+    """Issue #7: latencia de entrega y estado de salud."""
+
+    async def test_sin_entregas_la_latencia_es_none(self):
+        stats = BusEventos().estadisticas
+        for clave in ("latencia_promedio_ms", "latencia_p95_ms", "latencia_max_ms"):
+            self.assertIsNone(stats[clave])
+
+    async def test_mide_la_latencia_en_milisegundos(self):
+        bus = BusEventos()
+        bus.suscribir(Demora(0.03))
+        await bus.iniciar()
+        gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+        await bus.detener()
+        stats = bus.estadisticas
+        self.assertGreaterEqual(stats["latencia_max_ms"], 30)
+        self.assertLess(stats["latencia_max_ms"], 500)
+        self.assertEqual(stats["latencia_promedio_ms"], stats["latencia_max_ms"])
+
+    async def test_la_latencia_incluye_los_reintentos(self):
+        bus = BusEventos(max_reintentos=2, espera_base=0.05)
+        bus.suscribir(FallaNVeces(1))
+        await bus.iniciar()
+        with self.assertLogs("zyntra.eventos", "WARNING"):
+            gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+            await bus.detener()
+        self.assertGreaterEqual(bus.estadisticas["latencia_max_ms"], 50)
+
+    def test_percentil_95_por_rango_mas_cercano(self):
+        from zyntra.eventos import _percentil
+        valores = [float(i) for i in range(1, 101)]
+        self.assertEqual(_percentil(valores, 95), 95.0)
+        self.assertEqual(_percentil([7.0], 95), 7.0)
+        self.assertEqual(_percentil([1.0, 2.0, 3.0, 100.0], 95), 100.0)
+
+    async def test_salud_ok_con_todos_los_circuitos_cerrados(self):
+        bus = BusEventos()
+        bus.suscribir(PanelRastreo())
+        salud = bus.salud()
+        self.assertEqual(salud["estado"], "ok")
+        self.assertEqual(salud["suscriptores"]["panel de rastreo"],
+                         {"circuito": "cerrado", "fallos_seguidos": 0, "aperturas": 0,
+                          "en_cola_fallidos": 0})
+
+    async def test_salud_degradado_si_un_circuito_esta_abierto(self):
+        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60)
+        bus.suscribir(FallaNVeces(99))
+        bus.suscribir(PanelRastreo())
+        await bus.iniciar()
+        guias = [f"ZYN-0000000{i}" for i in range(1, 4)]
+        gestor = gestor_con(bus, guias)
+        with self.assertLogs("zyntra.eventos", "WARNING"):
+            for guia in guias:
+                gestor.cambiar_estado(guia, E.EN_TRANSITO)
+            await bus.detener()
+
+        salud = bus.salud()
+        self.assertEqual(salud["estado"], "degradado")
+        caido = salud["suscriptores"]["falla n veces"]
+        self.assertEqual(caido["circuito"], "abierto")
+        self.assertEqual(caido["en_cola_fallidos"], 3)
+        self.assertEqual(salud["suscriptores"]["panel de rastreo"]["circuito"], "cerrado")
+
+
 class Demora(Suscriptor):
     nombre = "servicio lento"
 
