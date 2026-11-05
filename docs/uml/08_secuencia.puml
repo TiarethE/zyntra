@@ -31,7 +31,12 @@ B -> N : wait_for(notificar(evento), 2 s)
 alt responde a tiempo
   N --> B : ok (entregados += 1)
 else excede el tiempo límite o falla
-  B -> B : registra aviso (fallidos += 1)
-  note right of B : el envío ya cambió de estado
+  loop hasta 3 reintentos, espera 0.1 s · 0.2 s · 0.4 s
+    B -> N : wait_for(notificar(evento), 2 s)
+  end
+  opt se agotan los reintentos
+    B -> B : cola_fallidos.append(EventoFallido)
+    note right of B : el envío ya cambió de estado;\nse puede reprocesar después
+  end
 end
 @enduml

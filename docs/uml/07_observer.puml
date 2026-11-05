@@ -7,7 +7,11 @@ class BusEventos <<Subject>> {
   -_suscriptores : list[Suscriptor]
   -_cola : asyncio.Queue[CambioEstado]
   -_tiempo_limite : float
+  -_max_reintentos : int
+  -_espera_base : float
+  +cola_fallidos : list[EventoFallido]
   +entregados : int
+  +reintentos : int
   +fallidos : int
   +descartados : int
   +estadisticas : dict[str, int]
@@ -16,8 +20,16 @@ class BusEventos <<Subject>> {
   +publicar(evento : CambioEstado) : bool
   +iniciar()
   +detener()
+  +reprocesar_fallidos() : int
   -_trabajar()
-  -_entregar(suscriptor : Suscriptor, evento : CambioEstado)
+  -_entregar(suscriptor : Suscriptor, evento : CambioEstado) : bool
+}
+class EventoFallido <<Event>> {
+  +evento : CambioEstado
+  +suscriptor : str
+  +intentos : int
+  +motivo : str
+  +marca_tiempo : datetime
 }
 abstract class Suscriptor <<Observer>> {
   +nombre : str
@@ -58,12 +70,16 @@ Suscriptor <|-- PanelRastreo
 GestorEnvios --> "0..1" BusEventos : publica en
 GestorEnvios ..> CambioEstado : crea
 BusEventos ..> CambioEstado : encola
+BusEventos *-- "0..*" EventoFallido : cola de fallidos
+EventoFallido --> "1" CambioEstado
 
 note bottom of BusEventos
   Tiempo real blando:
   · publicar() usa put_nowait: nunca bloquea.
   · Cola de 1000 eventos; si se llena se descarta y se cuenta.
   · 2 s de tiempo límite por suscriptor.
+  · Hasta 3 reintentos con espera exponencial (0.1, 0.2, 0.4 s);
+    si se agotan, el aviso pasa a la cola de fallidos.
   · Los suscriptores se atienden a la vez (gather).
   · Un suscriptor que falla no afecta a los demás.
 end note
