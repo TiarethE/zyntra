@@ -2,6 +2,11 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado semántico.
 
+## [Sin publicar]
+
+### Agregado
+- Estrategia de ramas y flujo de revisión en `CONTRIBUTING.md`, plantilla de pull request y pruebas automáticas con GitHub Actions (#1).
+
 ## [1.0.0] - 2026-11-04
 
 ### Agregado

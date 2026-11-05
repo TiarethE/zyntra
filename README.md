@@ -52,4 +52,4 @@ Los diagramas de `docs/uml` se escribieron a partir del código. La prueba `test
 - `v0.1`: versión de partida, una sola clase `Envio`.
 - `v1.0`: versión refactorizada con los cuatro patrones.
 
-Cada patrón se desarrolló en su propia rama (`feature/...`) y se unió a `main` con sus pruebas pasando. Los cambios están en [CHANGELOG.md](CHANGELOG.md).
+Cada patrón se desarrolló en su propia rama (`feature/...`) y se unió a `main` con sus pruebas pasando. Los cambios están en [CHANGELOG.md](CHANGELOG.md) y el flujo de trabajo en [CONTRIBUTING.md](CONTRIBUTING.md).
