@@ -5,7 +5,8 @@ skinparam linetype polyline
 
 class BusEventos <<Subject>> {
   -_suscriptores : list[Suscriptor]
-  -_cola : asyncio.Queue[CambioEstado]
+  -_colas : list[asyncio.Queue[CambioEstado]]
+  +trabajadores : int
   -_tiempo_limite : float
   -_max_reintentos : int
   -_espera_base : float
@@ -23,7 +24,8 @@ class BusEventos <<Subject>> {
   +iniciar()
   +detener()
   +reprocesar_fallidos() : int
-  -_trabajar()
+  -_cola_de(numero_guia : str) : asyncio.Queue[CambioEstado]
+  -_trabajar(cola : asyncio.Queue[CambioEstado])
   -_entregar(suscriptor : Suscriptor, evento : CambioEstado) : bool
 }
 class CircuitBreaker {
@@ -96,7 +98,9 @@ CircuitBreaker --> "1" EstadoCircuito
 note bottom of BusEventos
   Tiempo real blando:
   · publicar() usa put_nowait: nunca bloquea.
-  · Cola de 1000 eventos; si se llena se descarta y se cuenta.
+  · 4 trabajadores en paralelo, cada uno con su cola; la misma
+    guía siempre va al mismo trabajador (conserva el orden).
+  · 1000 eventos en espera en total; si se llena se descarta y se cuenta.
   · 2 s de tiempo límite por suscriptor.
   · Hasta 3 reintentos con espera exponencial (0.1, 0.2, 0.4 s);
     si se agotan, el aviso pasa a la cola de fallidos.

@@ -1,6 +1,7 @@
 """Pruebas del módulo de respuesta (Segundo Parcial)."""
 
 import asyncio
+import random
 import time
 import unittest
 
@@ -165,7 +166,12 @@ class TestCircuitBreaker(unittest.TestCase):
 
 class TestCircuitBreakerEnElBus(unittest.IsolatedAsyncioTestCase):
     async def test_con_el_circuito_abierto_no_se_llama_al_suscriptor(self):
-        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60)
+        # Un solo trabajador: la prueba cuenta llamadas exactas, y con varios
+        # trabajadores las entregas que ya estaban en curso cuando el circuito
+        # seguía cerrado también llegan al servicio (en Python 3.11 wait_for
+        # crea una tarea aparte y las cinco pasan el chequeo antes del primer fallo).
+        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60,
+                         trabajadores=1)
         caido = FallaNVeces(99)
         bus.suscribir(caido)
         await bus.iniciar()
@@ -183,6 +189,79 @@ class TestCircuitBreakerEnElBus(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(bus.cola_fallidos), 5)
         self.assertEqual(bus.cola_fallidos[-1].motivo, "circuito abierto")
         self.assertIs(bus.circuitos["falla n veces"].estado, C.ABIERTO)
+
+
+class RegistraOrden(Suscriptor):
+    nombre = "registra orden"
+
+    def __init__(self, demora_maxima=0.0):
+        self.demora_maxima = demora_maxima
+        self.por_guia = {}
+
+    async def notificar(self, evento):
+        await asyncio.sleep(random.uniform(0, self.demora_maxima))
+        self.por_guia.setdefault(evento.numero_guia, []).append(evento.nuevo)
+
+
+class TestTrabajadoresConcurrentes(unittest.IsolatedAsyncioTestCase):
+    """Issue #4: varios trabajadores sin perder el orden de cada envío."""
+
+    RECORRIDO = [E.EN_TRANSITO, E.EN_REPARTO, E.ENTREGADO]
+
+    async def test_cada_envio_recibe_sus_avisos_en_orden(self):
+        bus = BusEventos(trabajadores=4)
+        orden = RegistraOrden(demora_maxima=0.003)
+        bus.suscribir(orden)
+        await bus.iniciar()
+        guias = [f"ZYN-{i:08d}" for i in range(1, 201)]
+        gestor = gestor_con(bus, guias)
+        for destino in self.RECORRIDO:
+            for guia in guias:
+                gestor.cambiar_estado(guia, destino)
+        await bus.detener()
+
+        self.assertEqual(len(orden.por_guia), 200)
+        for guia in guias:
+            self.assertEqual(orden.por_guia[guia], self.RECORRIDO, guia)
+
+    async def test_los_envios_se_reparten_entre_los_trabajadores(self):
+        bus = BusEventos(trabajadores=4)
+        guias = [f"ZYN-{i:08d}" for i in range(1, 101)]
+        gestor_con(bus, guias)
+        usadas = {id(bus._cola_de(guia)) for guia in guias}
+        self.assertEqual(len(usadas), 4)
+        self.assertIs(bus._cola_de(guias[0]), bus._cola_de(guias[0]))
+
+    async def test_cuatro_trabajadores_son_mas_rapidos_que_uno(self):
+        async def medir(trabajadores):
+            bus = BusEventos(trabajadores=trabajadores)
+            bus.suscribir(Demora(0.02))
+            await bus.iniciar()
+            guias = [f"ZYN-{i:08d}" for i in range(1, 41)]
+            gestor = gestor_con(bus, guias)
+            inicio = time.perf_counter()
+            for guia in guias:
+                gestor.cambiar_estado(guia, E.EN_TRANSITO)
+            await bus.detener()
+            return time.perf_counter() - inicio
+
+        uno, cuatro = await medir(1), await medir(4)
+        # 40 avisos × 20 ms: ~0.8 s con uno, ~0.2 s con cuatro.
+        self.assertLess(cuatro, uno / 2.5)
+
+    def test_requiere_al_menos_un_trabajador(self):
+        with self.assertRaises(ValueError):
+            BusEventos(trabajadores=0)
+
+
+class Demora(Suscriptor):
+    nombre = "servicio lento"
+
+    def __init__(self, segundos):
+        self.segundos = segundos
+
+    async def notificar(self, evento):
+        await asyncio.sleep(self.segundos)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import zlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker
 from zyntra.estados import NombreEstado
@@ -23,6 +24,7 @@ from zyntra.estados import NombreEstado
 log = logging.getLogger(__name__)
 
 CAPACIDAD_COLA = 1000      # eventos en espera antes de empezar a descartar
+TRABAJADORES = 4           # tareas que entregan eventos en paralelo
 TIEMPO_LIMITE_S = 2.0      # segundos que se espera a cada suscriptor
 MAX_REINTENTOS = 3         # intentos extra antes de mandar el aviso a la cola de fallidos
 ESPERA_BASE_S = 0.1        # espera antes del primer reintento; se duplica en cada uno
@@ -65,16 +67,23 @@ class BusEventos:
                  max_reintentos: int = MAX_REINTENTOS,
                  espera_base: float = ESPERA_BASE_S,
                  umbral_circuito: int = UMBRAL_FALLOS,
-                 espera_circuito: float = TIEMPO_ESPERA_S) -> None:
+                 espera_circuito: float = TIEMPO_ESPERA_S,
+                 trabajadores: int = TRABAJADORES) -> None:
+        if trabajadores < 1:
+            raise ValueError("Se necesita al menos un trabajador")
         self._suscriptores: list[Suscriptor] = []
         self._umbral_circuito = umbral_circuito
         self._espera_circuito = espera_circuito
         self.circuitos: dict[str, CircuitBreaker] = {}
-        self._cola: asyncio.Queue[CambioEstado] = asyncio.Queue(maxsize=capacidad)
+        # Una cola por trabajador; la capacidad total se reparte entre ellas.
+        self.trabajadores = trabajadores
+        por_cola = math.ceil(capacidad / trabajadores)
+        self._colas: list[asyncio.Queue[CambioEstado]] = [
+            asyncio.Queue(maxsize=por_cola) for _ in range(trabajadores)]
         self._tiempo_limite = tiempo_limite
         self._max_reintentos = max_reintentos
         self._espera_base = espera_base
-        self._tarea: Optional[asyncio.Task] = None
+        self._tareas: list[asyncio.Task] = []
         self.cola_fallidos: list[EventoFallido] = []
         self.entregados = 0
         self.reintentos = 0
@@ -88,37 +97,43 @@ class BusEventos:
                                                            self._espera_circuito)
 
     def publicar(self, evento: CambioEstado) -> bool:
-        """Encola el evento sin esperar. Si la cola está llena, lo descarta."""
+        """Encola el evento sin esperar. Si la cola está llena, lo descarta.
+
+        Los eventos de una misma guía siempre van a la misma cola, así que se
+        entregan en el orden en que ocurrieron.
+        """
         try:
-            self._cola.put_nowait(evento)
+            self._cola_de(evento.numero_guia).put_nowait(evento)
             return True
         except asyncio.QueueFull:
             self.descartados += 1
             log.warning("Cola llena: se descartó el evento de %s", evento.numero_guia)
             return False
 
+    def _cola_de(self, numero_guia: str) -> asyncio.Queue[CambioEstado]:
+        return self._colas[zlib.crc32(numero_guia.encode()) % self.trabajadores]
+
     async def iniciar(self) -> None:
-        if self._tarea is None:
-            self._tarea = asyncio.create_task(self._trabajar())
+        if not self._tareas:
+            self._tareas = [asyncio.create_task(self._trabajar(cola)) for cola in self._colas]
 
     async def detener(self) -> None:
         """Espera a que se entreguen los eventos pendientes y se detiene."""
-        if self._tarea is None:
+        if not self._tareas:
             return
-        await self._cola.join()
-        self._tarea.cancel()
-        try:
-            await self._tarea
-        except asyncio.CancelledError:
-            pass
-        self._tarea = None
+        for cola in self._colas:
+            await cola.join()
+        for tarea in self._tareas:
+            tarea.cancel()
+        await asyncio.gather(*self._tareas, return_exceptions=True)
+        self._tareas = []
 
     @property
     def estadisticas(self) -> dict[str, int]:
         return {"entregados": self.entregados, "reintentos": self.reintentos,
                 "fallidos": self.fallidos, "descartados": self.descartados,
                 "rechazados_por_circuito": self.rechazados_por_circuito,
-                "pendientes": self._cola.qsize(), "en_cola_fallidos": len(self.cola_fallidos)}
+                "pendientes": sum(c.qsize() for c in self._colas), "en_cola_fallidos": len(self.cola_fallidos)}
 
     async def reprocesar_fallidos(self) -> int:
         """Vuelve a intentar los avisos de la cola de fallidos.
@@ -137,14 +152,14 @@ class BusEventos:
                 entregados += 1
         return entregados
 
-    async def _trabajar(self) -> None:
+    async def _trabajar(self, cola: asyncio.Queue[CambioEstado]) -> None:
         while True:
-            evento = await self._cola.get()
+            evento = await cola.get()
             try:
                 # Todos los suscriptores a la vez: uno lento no retrasa a los demás.
                 await asyncio.gather(*(self._entregar(s, evento) for s in self._suscriptores))
             finally:
-                self._cola.task_done()
+                cola.task_done()
 
     async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado) -> bool:
         """Entrega con reintentos y espera exponencial. Devuelve si se entregó.
