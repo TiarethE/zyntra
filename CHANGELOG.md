@@ -9,6 +9,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - Reintentos de notificaciones con espera exponencial y cola de fallidos que se puede reprocesar (#2).
 - Circuit breaker por suscriptor: tras 5 fallos seguidos deja de llamar al servicio durante 30 s y luego prueba una llamada (#3).
 - Cuatro trabajadores entregan eventos en paralelo; los de una misma guía siempre van al mismo trabajador para conservar su orden (#4).
+- Cambios de estado simultáneos sobre un mismo envío desde varios hilos: un candado por guía evita estados corruptos y `publicar()` se puede llamar desde otro hilo (#5).
 
 ## [1.0.0] - 2026-11-04
 
