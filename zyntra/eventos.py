@@ -84,6 +84,7 @@ class BusEventos:
         self._max_reintentos = max_reintentos
         self._espera_base = espera_base
         self._tareas: list[asyncio.Task] = []
+        self._bucle: asyncio.AbstractEventLoop | None = None
         self.cola_fallidos: list[EventoFallido] = []
         self.entregados = 0
         self.reintentos = 0
@@ -100,8 +101,21 @@ class BusEventos:
         """Encola el evento sin esperar. Si la cola está llena, lo descarta.
 
         Los eventos de una misma guía siempre van a la misma cola, así que se
-        entregan en el orden en que ocurrieron.
+        entregan en el orden en que ocurrieron. Se puede llamar desde otro hilo:
+        en ese caso el evento se pasa al bucle del bus de forma segura.
         """
+        if self._bucle is not None and not self._en_el_bucle():
+            self._bucle.call_soon_threadsafe(self._encolar, evento)
+            return True
+        return self._encolar(evento)
+
+    def _en_el_bucle(self) -> bool:
+        try:
+            return asyncio.get_running_loop() is self._bucle
+        except RuntimeError:
+            return False
+
+    def _encolar(self, evento: CambioEstado) -> bool:
         try:
             self._cola_de(evento.numero_guia).put_nowait(evento)
             return True
@@ -115,6 +129,7 @@ class BusEventos:
 
     async def iniciar(self) -> None:
         if not self._tareas:
+            self._bucle = asyncio.get_running_loop()
             self._tareas = [asyncio.create_task(self._trabajar(cola)) for cola in self._colas]
 
     async def detener(self) -> None:
@@ -127,6 +142,7 @@ class BusEventos:
             tarea.cancel()
         await asyncio.gather(*self._tareas, return_exceptions=True)
         self._tareas = []
+        self._bucle = None
 
     @property
     def estadisticas(self) -> dict[str, int]:

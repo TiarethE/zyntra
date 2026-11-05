@@ -2,12 +2,16 @@
 
 import asyncio
 import random
+import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from unittest import mock
 
 from tests.apoyo import creadores, datos_envio
+from zyntra.creadores import EnvioCreator
 from zyntra.circuito import CircuitBreaker, EstadoCircuito as C
-from zyntra.estados import NombreEstado as E
+from zyntra.estados import EstadoEnvio, NombreEstado as E, TransicionInvalida
 from zyntra.eventos import BusEventos, Suscriptor
 from zyntra.gestor import GestorEnvios
 from zyntra.notificadores import PanelRastreo
@@ -257,6 +261,89 @@ class Demora(Suscriptor):
 
     async def notificar(self, evento):
         await asyncio.sleep(self.segundos)
+
+
+def transicion_lenta(segundos=0.002):
+    """Simula una validación lenta (p. ej. una consulta a base de datos) para
+    que la ventana entre leer el estado y cambiarlo sea visible en la prueba."""
+    original = EstadoEnvio.transicionar
+
+    def lenta(self, envio, destino):
+        time.sleep(segundos)
+        return original(self, envio, destino)
+
+    return mock.patch.object(EstadoEnvio, "transicionar", lenta)
+
+
+class TestCambiosSimultaneos(unittest.IsolatedAsyncioTestCase):
+    """Issue #5: cambios de estado simultáneos sobre el mismo envío."""
+
+    async def test_solo_un_hilo_gana_la_misma_transicion(self):
+        gestor = gestor_con(None)
+        barrera = threading.Barrier(50)
+
+        def intentar():
+            barrera.wait()
+            try:
+                gestor.cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+                return "ok"
+            except TransicionInvalida:
+                return "rechazado"
+
+        with transicion_lenta(), ThreadPoolExecutor(max_workers=50) as hilos:
+            resultados = list(hilos.map(lambda _: intentar(), range(50)))
+
+        self.assertEqual(resultados.count("ok"), 1)
+        self.assertEqual(resultados.count("rechazado"), 49)
+        rastreo = gestor.rastrear("ZYN-00000001")
+        self.assertEqual(len(rastreo), 2)  # registrado + un solo "en tránsito"
+
+    async def test_hilos_publican_en_el_bus_en_marcha(self):
+        bus = BusEventos(trabajadores=4)
+        orden = RegistraOrden()
+        bus.suscribir(orden)
+        await bus.iniciar()
+        guias = [f"ZYN-{i:08d}" for i in range(1, 101)]
+        gestor = gestor_con(bus, guias)
+
+        def recorrer(guia):
+            for destino in TestTrabajadoresConcurrentes.RECORRIDO:
+                gestor.cambiar_estado(guia, destino)
+
+        def en_paralelo():
+            with ThreadPoolExecutor(max_workers=16) as hilos:
+                list(hilos.map(recorrer, guias))
+
+        # Los hilos publican mientras el bucle de eventos sigue entregando.
+        await asyncio.to_thread(en_paralelo)
+        await asyncio.wait_for(bus.detener(), timeout=5)
+
+        self.assertEqual(bus.descartados, 0)
+        for guia in guias:
+            self.assertEqual(orden.por_guia[guia], TestTrabajadoresConcurrentes.RECORRIDO, guia)
+
+    async def test_registrar_la_misma_guia_desde_varios_hilos(self):
+        gestor = GestorEnvios(creadores(), None)
+        barrera = threading.Barrier(20)
+
+        def registrar():
+            barrera.wait()
+            try:
+                gestor.registrar_envio(TipoEnvio.NACIONAL, **datos_envio(guia="ZYN-00000009"))
+                return True
+            except ValueError:
+                return False
+
+        original = EnvioCreator.crear_envio
+
+        def creacion_lenta(self, **datos):
+            time.sleep(0.002)
+            return original(self, **datos)
+
+        with mock.patch.object(EnvioCreator, "crear_envio", creacion_lenta), \
+                ThreadPoolExecutor(max_workers=20) as hilos:
+            resultados = list(hilos.map(lambda _: registrar(), range(20)))
+        self.assertEqual(resultados.count(True), 1)
 
 
 if __name__ == "__main__":
