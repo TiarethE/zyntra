@@ -5,12 +5,13 @@ skinparam linetype polyline
 
 class BusEventos <<Subject>> {
   -_suscriptores : list[Suscriptor]
-  -_colas : list[asyncio.Queue[CambioEstado]]
+  -_colas : list[asyncio.Queue[Entrada]]
   +trabajadores : int
   -_tiempo_limite : float
   -_max_reintentos : int
   -_espera_base : float
   -_bucle : asyncio.AbstractEventLoop | None
+  +outbox : Outbox | None
   +cola_fallidos : list[EventoFallido]
   +circuitos : dict[str, CircuitBreaker]
   +entregados : int
@@ -26,9 +27,10 @@ class BusEventos <<Subject>> {
   +detener()
   +reprocesar_fallidos() : int
   -_en_el_bucle() : bool
-  -_encolar(evento : CambioEstado) : bool
-  -_cola_de(numero_guia : str) : asyncio.Queue[CambioEstado]
-  -_trabajar(cola : asyncio.Queue[CambioEstado])
+  -_encolar(evento : CambioEstado, destinos : frozenset[str] | None) : bool
+  -_recuperar_pendientes()
+  -_cola_de(numero_guia : str) : asyncio.Queue[Entrada]
+  -_trabajar(cola : asyncio.Queue[Entrada])
   -_entregar(suscriptor : Suscriptor, evento : CambioEstado) : bool
 }
 class CircuitBreaker {
@@ -73,6 +75,16 @@ class CambioEstado <<Event>> {
   +descripcion : str
   +destinatario : str
   +marca_tiempo : datetime
+  +id : str
+}
+class Outbox {
+  +ruta : Path
+  -_candado : threading.Lock
+  --
+  +guardar(evento : CambioEstado)
+  +marcar_entregado(evento : CambioEstado, suscriptor : str)
+  +pendientes(suscriptores : Iterable[str]) : list[tuple[CambioEstado, set[str]]]
+  +compactar(suscriptores : Iterable[str])
 }
 class GestorEnvios {
   -_creadores : dict[TipoEnvio, EnvioCreator]
@@ -99,6 +111,8 @@ BusEventos *-- "0..*" EventoFallido : cola de fallidos
 EventoFallido --> "1" CambioEstado
 BusEventos *-- "0..*" CircuitBreaker : uno por suscriptor
 CircuitBreaker --> "1" EstadoCircuito
+BusEventos --> "0..1" Outbox : registra en disco
+Outbox ..> CambioEstado : guarda y recupera
 
 note bottom of BusEventos
   Tiempo real blando:
@@ -112,6 +126,9 @@ note bottom of BusEventos
     si se agotan, el aviso pasa a la cola de fallidos.
   · Los suscriptores se atienden a la vez (gather).
   · Un suscriptor que falla no afecta a los demás.
+  · Con outbox (JSON Lines), cada evento se escribe antes de
+    encolarse y cada entrega se anota; al iniciar se reencola
+    solo lo que le falta a cada suscriptor.
   · Circuit breaker: tras 5 fallos seguidos no se llama
     al suscriptor durante 30 s.
 end note

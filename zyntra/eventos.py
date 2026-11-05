@@ -5,7 +5,8 @@ Cada cambio de estado se publica como un evento. Los suscriptores
 (DT-7). Es tiempo real blando: publicar nunca bloquea, cada suscriptor tiene
 un tiempo límite y un fallo no afecta a los demás. Un aviso que falla se
 reintenta con espera exponencial; si se agotan los intentos, queda en la
-cola de fallidos para reprocesarlo después.
+cola de fallidos para reprocesarlo después. Con un outbox, los avisos
+pendientes sobreviven a un reinicio del proceso.
 """
 
 from __future__ import annotations
@@ -13,13 +14,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import uuid
 import zlib
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker
 from zyntra.estados import NombreEstado
+from zyntra.outbox import Outbox
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ class CambioEstado:
     descripcion: str
     destinatario: str          # correo del cliente
     marca_tiempo: datetime
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,10 @@ class EventoFallido:
     intentos: int
     motivo: str
     marca_tiempo: datetime
+
+
+# Lo que va en cada cola: el evento y a quién entregarlo (None = a todos).
+Entrada = tuple[CambioEstado, "frozenset[str] | None"]
 
 
 class Suscriptor(ABC):
@@ -68,7 +76,8 @@ class BusEventos:
                  espera_base: float = ESPERA_BASE_S,
                  umbral_circuito: int = UMBRAL_FALLOS,
                  espera_circuito: float = TIEMPO_ESPERA_S,
-                 trabajadores: int = TRABAJADORES) -> None:
+                 trabajadores: int = TRABAJADORES,
+                 outbox: Outbox | None = None) -> None:
         if trabajadores < 1:
             raise ValueError("Se necesita al menos un trabajador")
         self._suscriptores: list[Suscriptor] = []
@@ -78,12 +87,13 @@ class BusEventos:
         # Una cola por trabajador; la capacidad total se reparte entre ellas.
         self.trabajadores = trabajadores
         por_cola = math.ceil(capacidad / trabajadores)
-        self._colas: list[asyncio.Queue[CambioEstado]] = [
+        self._colas: list[asyncio.Queue[Entrada]] = [
             asyncio.Queue(maxsize=por_cola) for _ in range(trabajadores)]
         self._tiempo_limite = tiempo_limite
         self._max_reintentos = max_reintentos
         self._espera_base = espera_base
         self._tareas: list[asyncio.Task] = []
+        self.outbox = outbox
         self._bucle: asyncio.AbstractEventLoop | None = None
         self.cola_fallidos: list[EventoFallido] = []
         self.entregados = 0
@@ -103,7 +113,12 @@ class BusEventos:
         Los eventos de una misma guía siempre van a la misma cola, así que se
         entregan en el orden en que ocurrieron. Se puede llamar desde otro hilo:
         en ese caso el evento se pasa al bucle del bus de forma segura.
+
+        Con outbox, el evento se escribe en disco antes de encolarse: aunque
+        se descarte o el proceso se caiga, se entrega al reiniciar.
         """
+        if self.outbox is not None:
+            self.outbox.guardar(evento)
         if self._bucle is not None and not self._en_el_bucle():
             self._bucle.call_soon_threadsafe(self._encolar, evento)
             return True
@@ -115,22 +130,36 @@ class BusEventos:
         except RuntimeError:
             return False
 
-    def _encolar(self, evento: CambioEstado) -> bool:
+    def _encolar(self, evento: CambioEstado,
+                 destinos: frozenset[str] | None = None) -> bool:
         try:
-            self._cola_de(evento.numero_guia).put_nowait(evento)
+            self._cola_de(evento.numero_guia).put_nowait((evento, destinos))
             return True
         except asyncio.QueueFull:
             self.descartados += 1
             log.warning("Cola llena: se descartó el evento de %s", evento.numero_guia)
             return False
 
-    def _cola_de(self, numero_guia: str) -> asyncio.Queue[CambioEstado]:
+    def _cola_de(self, numero_guia: str) -> asyncio.Queue[Entrada]:
         return self._colas[zlib.crc32(numero_guia.encode()) % self.trabajadores]
 
     async def iniciar(self) -> None:
         if not self._tareas:
             self._bucle = asyncio.get_running_loop()
+            self._recuperar_pendientes()
             self._tareas = [asyncio.create_task(self._trabajar(cola)) for cola in self._colas]
+
+    def _recuperar_pendientes(self) -> None:
+        """Reencola lo que el outbox tiene sin entregar, solo a quien le falta."""
+        if self.outbox is None:
+            return
+        nombres = [s.nombre for s in self._suscriptores]
+        pendientes = self.outbox.pendientes(nombres)
+        self.outbox.compactar(nombres)
+        for evento, faltan in pendientes:
+            self._encolar(evento, frozenset(faltan))
+        if pendientes:
+            log.info("Outbox: %d eventos pendientes reencolados", len(pendientes))
 
     async def detener(self) -> None:
         """Espera a que se entreguen los eventos pendientes y se detiene."""
@@ -168,12 +197,13 @@ class BusEventos:
                 entregados += 1
         return entregados
 
-    async def _trabajar(self, cola: asyncio.Queue[CambioEstado]) -> None:
+    async def _trabajar(self, cola: asyncio.Queue[Entrada]) -> None:
         while True:
-            evento = await cola.get()
+            evento, destinos = await cola.get()
             try:
                 # Todos los suscriptores a la vez: uno lento no retrasa a los demás.
-                await asyncio.gather(*(self._entregar(s, evento) for s in self._suscriptores))
+                await asyncio.gather(*(self._entregar(s, evento) for s in self._suscriptores
+                                       if destinos is None or s.nombre in destinos))
             finally:
                 cola.task_done()
 
@@ -198,6 +228,8 @@ class BusEventos:
                 await asyncio.wait_for(suscriptor.notificar(evento), self._tiempo_limite)
                 circuito.registrar_exito()
                 self.entregados += 1
+                if self.outbox is not None:
+                    self.outbox.marcar_entregado(evento, suscriptor.nombre)
                 return True
             except asyncio.TimeoutError:
                 motivo = f"tardó más de {self._tiempo_limite}s"
