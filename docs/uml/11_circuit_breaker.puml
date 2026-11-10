@@ -1,0 +1,20 @@
+@startuml circuit_breaker
+!include estilo.iuml
+title Circuit breaker de cada suscriptor (circuito.py)
+skinparam StateBackgroundColor #EEE6F7
+skinparam StateBorderColor #6B3FA0
+skinparam linetype polyline
+hide empty description
+left to right direction
+
+state "Cerrado" as Cerrado : se llama al servicio
+state "Abierto" as Abierto : no se llama;\nel aviso va a la cola de fallidos
+state "Semiabierto" as Semiabierto : se permite una\nllamada de prueba
+
+[*] --> Cerrado
+Cerrado --> Cerrado : éxito / fallos = 0
+Cerrado --> Abierto : 5 fallos seguidos
+Abierto --> Semiabierto : pasan 30 s
+Semiabierto --> Cerrado : la prueba responde
+Semiabierto --> Abierto : la prueba falla
+@enduml
