@@ -46,6 +46,16 @@ Un PR está listo para merge cuando:
 - [ ] Agrega una línea en la sección «Sin publicar» de `CHANGELOG.md`.
 - [ ] Tiene al menos una aprobación.
 
+### PR apilados
+
+Cuando un cambio depende de otro que aún no se une, su PR toma como base la rama del anterior. En ese caso:
+
+- Se unen **de abajo hacia arriba**: primero el que apunta a `main`. GitHub cambia la base del siguiente a `main` sola.
+- Cada PR cierra solo su propio issue (`Closes #N`). GitHub cierra issues únicamente cuando el PR llega a `main`.
+- Antes de unir, se confirma que la base del PR sea `main`.
+
+Origen de la regla: el 10-nov-2026 la pila #8 a #14 se unió de arriba hacia abajo. El #9 quedó unido sobre la rama del #8 cuando esta ya estaba en `main`, y fue necesario el PR #15 para llevar el módulo a `main`.
+
 ## Versiones
 
 Se usa [versionado semántico](https://semver.org/lang/es/): `MAYOR.MENOR.PARCHE`.
