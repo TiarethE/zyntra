@@ -4,6 +4,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+## [2.0.0] - 2026-11-10
+
+Segundo Parcial: módulo de respuesta en tiempo real y gestión de configuración.
+
 ### Agregado
 - Estrategia de ramas y flujo de revisión en `CONTRIBUTING.md`, plantilla de pull request y pruebas automáticas con GitHub Actions (#1).
 - Reintentos de notificaciones con espera exponencial y cola de fallidos que se puede reprocesar (#2).
@@ -12,6 +16,15 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 - Cambios de estado simultáneos sobre un mismo envío desde varios hilos: un candado por guía evita estados corruptos y `publicar()` se puede llamar desde otro hilo (#5).
 - Outbox en disco (JSON Lines): los avisos pendientes sobreviven a un reinicio y al arrancar solo se reenvían a los suscriptores que no los recibieron (#6).
 - Métricas de latencia de entrega (promedio, p95 y máxima en ms) en `estadisticas` y método `salud()` que reporta «degradado» si algún circuito está abierto; la demostración las imprime (#7).
+- Regla para pull requests apilados en `CONTRIBUTING.md` (#16).
+
+### Cambiado
+- `CambioEstado` tiene un `id` único, que usa el outbox para anotar entregas (#6).
+- 78 pruebas automáticas, que corren en Python 3.11 y 3.13.
+
+### Corregido
+- La prueba del circuit breaker en el bus fallaba en Python 3.11 con varios trabajadores; ahora fija un trabajador porque cuenta llamadas exactas (#4, commit 396794f).
+- Los PR apilados #8 a #14 se unieron de arriba hacia abajo y el módulo no llegó a `main`; los issues #2 a #7 se reabrieron y el PR #15 lo integró (#16 agrega la regla para que no se repita).
 
 ## [1.0.0] - 2026-11-04
 
