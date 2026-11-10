@@ -1,7 +1,9 @@
 """Pruebas del módulo de respuesta (Segundo Parcial)."""
 
 import asyncio
+import os
 import random
+import tempfile
 import threading
 import time
 import unittest
@@ -15,6 +17,7 @@ from zyntra.estados import EstadoEnvio, NombreEstado as E, TransicionInvalida
 from zyntra.eventos import BusEventos, Suscriptor
 from zyntra.gestor import GestorEnvios
 from zyntra.notificadores import PanelRastreo
+from zyntra.outbox import Outbox
 from zyntra.tarifas import TipoEnvio
 
 
@@ -256,6 +259,174 @@ class TestTrabajadoresConcurrentes(unittest.IsolatedAsyncioTestCase):
     def test_requiere_al_menos_un_trabajador(self):
         with self.assertRaises(ValueError):
             BusEventos(trabajadores=0)
+
+
+class TestOutbox(unittest.IsolatedAsyncioTestCase):
+    """Issue #6: los avisos pendientes sobreviven a un reinicio."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        self.ruta = os.path.join(carpeta.name, "outbox.jsonl")
+
+    def bus_nuevo(self, *suscriptores, **opciones):
+        bus = BusEventos(outbox=Outbox(self.ruta), **opciones)
+        for suscriptor in suscriptores:
+            bus.suscribir(suscriptor)
+        return bus
+
+    async def test_un_bus_nuevo_entrega_lo_que_quedo_pendiente(self):
+        # El proceso "se cae" antes de que el bus arranque: la cola en memoria se pierde.
+        caido = self.bus_nuevo(RegistraOrden())
+        gestor = gestor_con(caido)
+        for destino in TestTrabajadoresConcurrentes.RECORRIDO:
+            gestor.cambiar_estado("ZYN-00000001", destino)
+        del caido, gestor
+
+        orden = RegistraOrden()
+        bus = self.bus_nuevo(orden)
+        await bus.iniciar()
+        await bus.detener()
+        self.assertEqual(orden.por_guia["ZYN-00000001"], TestTrabajadoresConcurrentes.RECORRIDO)
+
+    async def test_lo_ya_entregado_no_se_vuelve_a_enviar(self):
+        primero = RegistraOrden()
+        bus = self.bus_nuevo(primero)
+        await bus.iniciar()
+        gestor = gestor_con(bus)
+        gestor.cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+        await bus.detener()
+        gestor.cambiar_estado("ZYN-00000001", E.EN_REPARTO)  # queda sin entregar
+
+        segundo = RegistraOrden()
+        bus = self.bus_nuevo(segundo)
+        await bus.iniciar()
+        await bus.detener()
+        self.assertEqual(primero.por_guia["ZYN-00000001"], [E.EN_TRANSITO])
+        self.assertEqual(segundo.por_guia["ZYN-00000001"], [E.EN_REPARTO])
+
+        # Un tercer arranque ya no tiene nada pendiente.
+        tercero = RegistraOrden()
+        bus = self.bus_nuevo(tercero)
+        await bus.iniciar()
+        await bus.detener()
+        self.assertEqual(tercero.por_guia, {})
+
+    async def test_solo_se_reenvia_al_suscriptor_que_fallo(self):
+        panel = PanelRastreo()
+        bus = self.bus_nuevo(FallaNVeces(99), panel, max_reintentos=0)
+        await bus.iniciar()
+        with self.assertLogs("zyntra.eventos", "WARNING"):
+            gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+            await bus.detener()
+        self.assertEqual(len(bus.cola_fallidos), 1)
+
+        # Al reiniciar, el servicio ya responde; el panel no recibe el aviso dos veces.
+        recuperado, panel_nuevo = FallaNVeces(0), PanelRastreo()
+        bus = self.bus_nuevo(recuperado, panel_nuevo)
+        await bus.iniciar()
+        await bus.detener()
+        self.assertEqual(len(recuperado.recibidos), 1)
+        self.assertEqual(panel_nuevo.ultimo_estado, {})
+
+    async def test_el_evento_recuperado_es_igual_al_original(self):
+        bus = self.bus_nuevo(RegistraOrden())
+        gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+        (original,) = [e for e, _ in Outbox(self.ruta).pendientes(["registra orden"])]
+        self.assertEqual(original.nuevo, E.EN_TRANSITO)
+        self.assertEqual(original.numero_guia, "ZYN-00000001")
+
+    async def test_tolera_una_linea_a_medias(self):
+        bus = self.bus_nuevo(RegistraOrden())
+        gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+        with open(self.ruta, "a", encoding="utf-8") as archivo:
+            archivo.write('{"tipo": "entregado", "id": ')  # se cayó escribiendo
+
+        orden = RegistraOrden()
+        bus = self.bus_nuevo(orden)
+        await bus.iniciar()
+        await bus.detener()
+        self.assertEqual(orden.por_guia["ZYN-00000001"], [E.EN_TRANSITO])
+
+    async def test_al_iniciar_se_compacta_el_archivo(self):
+        bus = self.bus_nuevo(RegistraOrden())
+        await bus.iniciar()
+        gestor = gestor_con(bus, [f"ZYN-{i:08d}" for i in range(1, 21)])
+        for i in range(1, 21):
+            gestor.cambiar_estado(f"ZYN-{i:08d}", E.EN_TRANSITO)
+        await bus.detener()
+        with open(self.ruta, encoding="utf-8") as archivo:
+            self.assertEqual(len(archivo.readlines()), 40)
+
+        bus = self.bus_nuevo(RegistraOrden())
+        await bus.iniciar()
+        await bus.detener()
+        with open(self.ruta, encoding="utf-8") as archivo:
+            self.assertEqual(archivo.read(), "")
+
+
+class TestMetricas(unittest.IsolatedAsyncioTestCase):
+    """Issue #7: latencia de entrega y estado de salud."""
+
+    async def test_sin_entregas_la_latencia_es_none(self):
+        stats = BusEventos().estadisticas
+        for clave in ("latencia_promedio_ms", "latencia_p95_ms", "latencia_max_ms"):
+            self.assertIsNone(stats[clave])
+
+    async def test_mide_la_latencia_en_milisegundos(self):
+        bus = BusEventos()
+        bus.suscribir(Demora(0.03))
+        await bus.iniciar()
+        gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+        await bus.detener()
+        stats = bus.estadisticas
+        self.assertGreaterEqual(stats["latencia_max_ms"], 30)
+        self.assertLess(stats["latencia_max_ms"], 500)
+        self.assertEqual(stats["latencia_promedio_ms"], stats["latencia_max_ms"])
+
+    async def test_la_latencia_incluye_los_reintentos(self):
+        bus = BusEventos(max_reintentos=2, espera_base=0.05)
+        bus.suscribir(FallaNVeces(1))
+        await bus.iniciar()
+        with self.assertLogs("zyntra.eventos", "WARNING"):
+            gestor_con(bus).cambiar_estado("ZYN-00000001", E.EN_TRANSITO)
+            await bus.detener()
+        self.assertGreaterEqual(bus.estadisticas["latencia_max_ms"], 50)
+
+    def test_percentil_95_por_rango_mas_cercano(self):
+        from zyntra.eventos import _percentil
+        valores = [float(i) for i in range(1, 101)]
+        self.assertEqual(_percentil(valores, 95), 95.0)
+        self.assertEqual(_percentil([7.0], 95), 7.0)
+        self.assertEqual(_percentil([1.0, 2.0, 3.0, 100.0], 95), 100.0)
+
+    async def test_salud_ok_con_todos_los_circuitos_cerrados(self):
+        bus = BusEventos()
+        bus.suscribir(PanelRastreo())
+        salud = bus.salud()
+        self.assertEqual(salud["estado"], "ok")
+        self.assertEqual(salud["suscriptores"]["panel de rastreo"],
+                         {"circuito": "cerrado", "fallos_seguidos": 0, "aperturas": 0,
+                          "en_cola_fallidos": 0})
+
+    async def test_salud_degradado_si_un_circuito_esta_abierto(self):
+        bus = BusEventos(max_reintentos=0, umbral_circuito=2, espera_circuito=60)
+        bus.suscribir(FallaNVeces(99))
+        bus.suscribir(PanelRastreo())
+        await bus.iniciar()
+        guias = [f"ZYN-0000000{i}" for i in range(1, 4)]
+        gestor = gestor_con(bus, guias)
+        with self.assertLogs("zyntra.eventos", "WARNING"):
+            for guia in guias:
+                gestor.cambiar_estado(guia, E.EN_TRANSITO)
+            await bus.detener()
+
+        salud = bus.salud()
+        self.assertEqual(salud["estado"], "degradado")
+        caido = salud["suscriptores"]["falla n veces"]
+        self.assertEqual(caido["circuito"], "abierto")
+        self.assertEqual(caido["en_cola_fallidos"], 3)
+        self.assertEqual(salud["suscriptores"]["panel de rastreo"]["circuito"], "cerrado")
 
 
 class Demora(Suscriptor):
