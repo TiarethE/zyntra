@@ -5,7 +5,8 @@ Cada cambio de estado se publica como un evento. Los suscriptores
 (DT-7). Es tiempo real blando: publicar nunca bloquea, cada suscriptor tiene
 un tiempo límite y un fallo no afecta a los demás. Un aviso que falla se
 reintenta con espera exponencial; si se agotan los intentos, queda en la
-cola de fallidos para reprocesarlo después.
+cola de fallidos para reprocesarlo después. Con un outbox, los avisos
+pendientes sobreviven a un reinicio del proceso.
 """
 
 from __future__ import annotations
@@ -13,13 +14,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
+import uuid
 import zlib
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from datetime import datetime
 
-from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker
+from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker, EstadoCircuito
 from zyntra.estados import NombreEstado
+from zyntra.outbox import Outbox
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +33,7 @@ TRABAJADORES = 4           # tareas que entregan eventos en paralelo
 TIEMPO_LIMITE_S = 2.0      # segundos que se espera a cada suscriptor
 MAX_REINTENTOS = 3         # intentos extra antes de mandar el aviso a la cola de fallidos
 ESPERA_BASE_S = 0.1        # espera antes del primer reintento; se duplica en cada uno
+MUESTRAS_LATENCIA = 10_000  # últimas entregas que se usan para las métricas de latencia
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,7 @@ class CambioEstado:
     descripcion: str
     destinatario: str          # correo del cliente
     marca_tiempo: datetime
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,11 @@ class EventoFallido:
     intentos: int
     motivo: str
     marca_tiempo: datetime
+
+
+# Lo que va en cada cola: el evento, a quién entregarlo (None = a todos) y
+# cuándo se publicó (reloj monotónico, para medir la latencia).
+Entrada = tuple[CambioEstado, "frozenset[str] | None", float]
 
 
 class Suscriptor(ABC):
@@ -68,7 +80,8 @@ class BusEventos:
                  espera_base: float = ESPERA_BASE_S,
                  umbral_circuito: int = UMBRAL_FALLOS,
                  espera_circuito: float = TIEMPO_ESPERA_S,
-                 trabajadores: int = TRABAJADORES) -> None:
+                 trabajadores: int = TRABAJADORES,
+                 outbox: Outbox | None = None) -> None:
         if trabajadores < 1:
             raise ValueError("Se necesita al menos un trabajador")
         self._suscriptores: list[Suscriptor] = []
@@ -78,18 +91,21 @@ class BusEventos:
         # Una cola por trabajador; la capacidad total se reparte entre ellas.
         self.trabajadores = trabajadores
         por_cola = math.ceil(capacidad / trabajadores)
-        self._colas: list[asyncio.Queue[CambioEstado]] = [
+        self._colas: list[asyncio.Queue[Entrada]] = [
             asyncio.Queue(maxsize=por_cola) for _ in range(trabajadores)]
         self._tiempo_limite = tiempo_limite
         self._max_reintentos = max_reintentos
         self._espera_base = espera_base
         self._tareas: list[asyncio.Task] = []
+        self.outbox = outbox
+        self._bucle: asyncio.AbstractEventLoop | None = None
         self.cola_fallidos: list[EventoFallido] = []
         self.entregados = 0
         self.reintentos = 0
         self.fallidos = 0
         self.descartados = 0
         self.rechazados_por_circuito = 0
+        self._latencias_ms: deque[float] = deque(maxlen=MUESTRAS_LATENCIA)
 
     def suscribir(self, suscriptor: Suscriptor) -> None:
         self._suscriptores.append(suscriptor)
@@ -100,22 +116,56 @@ class BusEventos:
         """Encola el evento sin esperar. Si la cola está llena, lo descarta.
 
         Los eventos de una misma guía siempre van a la misma cola, así que se
-        entregan en el orden en que ocurrieron.
+        entregan en el orden en que ocurrieron. Se puede llamar desde otro hilo:
+        en ese caso el evento se pasa al bucle del bus de forma segura.
+
+        Con outbox, el evento se escribe en disco antes de encolarse: aunque
+        se descarte o el proceso se caiga, se entrega al reiniciar.
         """
+        if self.outbox is not None:
+            self.outbox.guardar(evento)
+        if self._bucle is not None and not self._en_el_bucle():
+            self._bucle.call_soon_threadsafe(self._encolar, evento)
+            return True
+        return self._encolar(evento)
+
+    def _en_el_bucle(self) -> bool:
         try:
-            self._cola_de(evento.numero_guia).put_nowait(evento)
+            return asyncio.get_running_loop() is self._bucle
+        except RuntimeError:
+            return False
+
+    def _encolar(self, evento: CambioEstado,
+                 destinos: frozenset[str] | None = None) -> bool:
+        try:
+            self._cola_de(evento.numero_guia).put_nowait(
+                (evento, destinos, time.perf_counter()))
             return True
         except asyncio.QueueFull:
             self.descartados += 1
             log.warning("Cola llena: se descartó el evento de %s", evento.numero_guia)
             return False
 
-    def _cola_de(self, numero_guia: str) -> asyncio.Queue[CambioEstado]:
+    def _cola_de(self, numero_guia: str) -> asyncio.Queue[Entrada]:
         return self._colas[zlib.crc32(numero_guia.encode()) % self.trabajadores]
 
     async def iniciar(self) -> None:
         if not self._tareas:
+            self._bucle = asyncio.get_running_loop()
+            self._recuperar_pendientes()
             self._tareas = [asyncio.create_task(self._trabajar(cola)) for cola in self._colas]
+
+    def _recuperar_pendientes(self) -> None:
+        """Reencola lo que el outbox tiene sin entregar, solo a quien le falta."""
+        if self.outbox is None:
+            return
+        nombres = [s.nombre for s in self._suscriptores]
+        pendientes = self.outbox.pendientes(nombres)
+        self.outbox.compactar(nombres)
+        for evento, faltan in pendientes:
+            self._encolar(evento, frozenset(faltan))
+        if pendientes:
+            log.info("Outbox: %d eventos pendientes reencolados", len(pendientes))
 
     async def detener(self) -> None:
         """Espera a que se entreguen los eventos pendientes y se detiene."""
@@ -127,13 +177,40 @@ class BusEventos:
             tarea.cancel()
         await asyncio.gather(*self._tareas, return_exceptions=True)
         self._tareas = []
+        self._bucle = None
 
     @property
-    def estadisticas(self) -> dict[str, int]:
+    def estadisticas(self) -> dict[str, int | float | None]:
+        """Contadores y latencia de entrega en milisegundos.
+
+        La latencia va desde que el evento se publica (justo después del
+        cambio de estado) hasta que el suscriptor responde, reintentos
+        incluidos. Se calcula sobre las últimas MUESTRAS_LATENCIA entregas;
+        es None mientras no haya ninguna.
+        """
+        latencias = sorted(self._latencias_ms)
         return {"entregados": self.entregados, "reintentos": self.reintentos,
                 "fallidos": self.fallidos, "descartados": self.descartados,
                 "rechazados_por_circuito": self.rechazados_por_circuito,
-                "pendientes": sum(c.qsize() for c in self._colas), "en_cola_fallidos": len(self.cola_fallidos)}
+                "pendientes": sum(c.qsize() for c in self._colas),
+                "en_cola_fallidos": len(self.cola_fallidos),
+                "latencia_promedio_ms": _redondear(sum(latencias) / len(latencias)) if latencias else None,
+                "latencia_p95_ms": _redondear(_percentil(latencias, 95)) if latencias else None,
+                "latencia_max_ms": _redondear(latencias[-1]) if latencias else None}
+
+    def salud(self) -> dict:
+        """Estado de cada suscriptor. «degradado» si algún circuito está abierto."""
+        en_fallidos: dict[str, int] = {}
+        for fallido in self.cola_fallidos:
+            en_fallidos[fallido.suscriptor] = en_fallidos.get(fallido.suscriptor, 0) + 1
+        suscriptores = {
+            nombre: {"circuito": circuito.estado.value,
+                     "fallos_seguidos": circuito.fallos_seguidos,
+                     "aperturas": circuito.aperturas,
+                     "en_cola_fallidos": en_fallidos.get(nombre, 0)}
+            for nombre, circuito in self.circuitos.items()}
+        degradado = any(c.estado is not EstadoCircuito.CERRADO for c in self.circuitos.values())
+        return {"estado": "degradado" if degradado else "ok", "suscriptores": suscriptores}
 
     async def reprocesar_fallidos(self) -> int:
         """Vuelve a intentar los avisos de la cola de fallidos.
@@ -152,16 +229,19 @@ class BusEventos:
                 entregados += 1
         return entregados
 
-    async def _trabajar(self, cola: asyncio.Queue[CambioEstado]) -> None:
+    async def _trabajar(self, cola: asyncio.Queue[Entrada]) -> None:
         while True:
-            evento = await cola.get()
+            evento, destinos, publicado = await cola.get()
             try:
                 # Todos los suscriptores a la vez: uno lento no retrasa a los demás.
-                await asyncio.gather(*(self._entregar(s, evento) for s in self._suscriptores))
+                await asyncio.gather(*(self._entregar(s, evento, publicado)
+                                       for s in self._suscriptores
+                                       if destinos is None or s.nombre in destinos))
             finally:
                 cola.task_done()
 
-    async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado) -> bool:
+    async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado,
+                        publicado: float | None = None) -> bool:
         """Entrega con reintentos y espera exponencial. Devuelve si se entregó.
 
         Si el circuito del suscriptor está abierto, no se le llama: el aviso
@@ -182,6 +262,10 @@ class BusEventos:
                 await asyncio.wait_for(suscriptor.notificar(evento), self._tiempo_limite)
                 circuito.registrar_exito()
                 self.entregados += 1
+                if publicado is not None:  # los reprocesados no cuentan: su espera fue manual
+                    self._latencias_ms.append((time.perf_counter() - publicado) * 1000)
+                if self.outbox is not None:
+                    self.outbox.marcar_entregado(evento, suscriptor.nombre)
                 return True
             except asyncio.TimeoutError:
                 motivo = f"tardó más de {self._tiempo_limite}s"
@@ -195,3 +279,13 @@ class BusEventos:
             evento=evento, suscriptor=suscriptor.nombre, intentos=intentos,
             motivo=motivo, marca_tiempo=datetime.now()))
         return False
+
+
+def _percentil(ordenados: list[float], p: float) -> float:
+    """Percentil por rango más cercano sobre una lista ya ordenada."""
+    rango = math.ceil(p / 100 * len(ordenados))
+    return ordenados[max(rango, 1) - 1]
+
+
+def _redondear(ms: float) -> float:
+    return round(ms, 2)
