@@ -96,7 +96,19 @@ async def main() -> None:
     for destinatario, mensaje in correo.enviados:
         print(f"  {destinatario}: {mensaje}")
     print(f"  Panel de rastreo: {panel.ultimo_estado[envio.numero_guia].nuevo.value}")
-    print(f"  Estadísticas del bus: {bus.estadisticas}")
+
+    titulo("6. Métricas del módulo de respuesta")
+    stats = bus.estadisticas
+    for clave in ("entregados", "reintentos", "fallidos", "descartados",
+                  "rechazados_por_circuito", "en_cola_fallidos"):
+        print(f"  {clave:<26} {stats[clave]}")
+    for clave in ("latencia_promedio_ms", "latencia_p95_ms", "latencia_max_ms"):
+        print(f"  {clave:<26} {stats[clave]} ms")
+    salud = bus.salud()
+    print(f"  Salud del bus: {salud['estado']}")
+    for nombre, datos in salud["suscriptores"].items():
+        print(f"    {nombre:<34} circuito {datos['circuito']}, "
+              f"{datos['en_cola_fallidos']} en cola de fallidos")
 
 
 if __name__ == "__main__":
