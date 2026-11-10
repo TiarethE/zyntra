@@ -5,19 +5,58 @@ skinparam linetype polyline
 
 class BusEventos <<Subject>> {
   -_suscriptores : list[Suscriptor]
-  -_cola : asyncio.Queue[CambioEstado]
+  -_colas : list[asyncio.Queue[Entrada]]
+  +trabajadores : int
   -_tiempo_limite : float
+  -_max_reintentos : int
+  -_espera_base : float
+  -_bucle : asyncio.AbstractEventLoop | None
+  +outbox : Outbox | None
+  -_latencias_ms : deque[float]
+  +cola_fallidos : list[EventoFallido]
+  +circuitos : dict[str, CircuitBreaker]
   +entregados : int
+  +reintentos : int
   +fallidos : int
   +descartados : int
-  +estadisticas : dict[str, int]
+  +rechazados_por_circuito : int
+  +estadisticas : dict[str, int | float | None]
   --
   +suscribir(suscriptor : Suscriptor)
   +publicar(evento : CambioEstado) : bool
   +iniciar()
   +detener()
-  -_trabajar()
-  -_entregar(suscriptor : Suscriptor, evento : CambioEstado)
+  +reprocesar_fallidos() : int
+  +salud() : dict
+  -_en_el_bucle() : bool
+  -_encolar(evento : CambioEstado, destinos : frozenset[str] | None) : bool
+  -_recuperar_pendientes()
+  -_cola_de(numero_guia : str) : asyncio.Queue[Entrada]
+  -_trabajar(cola : asyncio.Queue[Entrada])
+  -_entregar(suscriptor : Suscriptor, evento : CambioEstado, publicado : float | None) : bool
+}
+class CircuitBreaker {
+  -_umbral_fallos : int
+  -_tiempo_espera : float
+  +estado : EstadoCircuito
+  +fallos_seguidos : int
+  +aperturas : int
+  --
+  +permite_llamada() : bool
+  +registrar_exito()
+  +registrar_fallo()
+}
+enum EstadoCircuito {
+  CERRADO
+  ABIERTO
+  SEMIABIERTO
+}
+class EventoFallido <<Event>> {
+  +evento : CambioEstado
+  +suscriptor : str
+  +intentos : int
+  +motivo : str
+  +marca_tiempo : datetime
 }
 abstract class Suscriptor <<Observer>> {
   +nombre : str
@@ -38,11 +77,23 @@ class CambioEstado <<Event>> {
   +descripcion : str
   +destinatario : str
   +marca_tiempo : datetime
+  +id : str
+}
+class Outbox {
+  +ruta : Path
+  -_candado : threading.Lock
+  --
+  +guardar(evento : CambioEstado)
+  +marcar_entregado(evento : CambioEstado, suscriptor : str)
+  +pendientes(suscriptores : Iterable[str]) : list[tuple[CambioEstado, set[str]]]
+  +compactar(suscriptores : Iterable[str])
 }
 class GestorEnvios {
   -_creadores : dict[TipoEnvio, EnvioCreator]
   -_bus : BusEventos
   -_envios : dict[str, Envio]
+  -_candados : dict[str, threading.Lock]
+  -_candado_registro : threading.Lock
   --
   +registrar_envio(tipo : TipoEnvio, **datos) : Envio
   +obtener(numero_guia : str) : Envio
@@ -58,13 +109,31 @@ Suscriptor <|-- PanelRastreo
 GestorEnvios --> "0..1" BusEventos : publica en
 GestorEnvios ..> CambioEstado : crea
 BusEventos ..> CambioEstado : encola
+BusEventos *-- "0..*" EventoFallido : cola de fallidos
+EventoFallido --> "1" CambioEstado
+BusEventos *-- "0..*" CircuitBreaker : uno por suscriptor
+CircuitBreaker --> "1" EstadoCircuito
+BusEventos --> "0..1" Outbox : registra en disco
+Outbox ..> CambioEstado : guarda y recupera
 
 note bottom of BusEventos
   Tiempo real blando:
-  · publicar() usa put_nowait: nunca bloquea.
-  · Cola de 1000 eventos; si se llena se descarta y se cuenta.
+  · publicar() usa put_nowait: nunca bloquea. Desde otro hilo
+    pasa el evento al bucle con call_soon_threadsafe.
+  · 4 trabajadores en paralelo, cada uno con su cola; la misma
+    guía siempre va al mismo trabajador (conserva el orden).
+  · 1000 eventos en espera en total; si se llena se descarta y se cuenta.
   · 2 s de tiempo límite por suscriptor.
+  · Hasta 3 reintentos con espera exponencial (0.1, 0.2, 0.4 s);
+    si se agotan, el aviso pasa a la cola de fallidos.
   · Los suscriptores se atienden a la vez (gather).
   · Un suscriptor que falla no afecta a los demás.
+  · Con outbox (JSON Lines), cada evento se escribe antes de
+    encolarse y cada entrega se anota; al iniciar se reencola
+    solo lo que le falta a cada suscriptor.
+  · Mide la latencia de cada entrega (promedio, p95, máx. en ms);
+    salud() es «degradado» si algún circuito no está cerrado.
+  · Circuit breaker: tras 5 fallos seguidos no se llama
+    al suscriptor durante 30 s.
 end note
 @enduml
