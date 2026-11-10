@@ -14,13 +14,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 import uuid
 import zlib
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker
+from zyntra.circuito import TIEMPO_ESPERA_S, UMBRAL_FALLOS, CircuitBreaker, EstadoCircuito
 from zyntra.estados import NombreEstado
 from zyntra.outbox import Outbox
 
@@ -31,6 +33,7 @@ TRABAJADORES = 4           # tareas que entregan eventos en paralelo
 TIEMPO_LIMITE_S = 2.0      # segundos que se espera a cada suscriptor
 MAX_REINTENTOS = 3         # intentos extra antes de mandar el aviso a la cola de fallidos
 ESPERA_BASE_S = 0.1        # espera antes del primer reintento; se duplica en cada uno
+MUESTRAS_LATENCIA = 10_000  # últimas entregas que se usan para las métricas de latencia
 
 
 @dataclass(frozen=True)
@@ -55,8 +58,9 @@ class EventoFallido:
     marca_tiempo: datetime
 
 
-# Lo que va en cada cola: el evento y a quién entregarlo (None = a todos).
-Entrada = tuple[CambioEstado, "frozenset[str] | None"]
+# Lo que va en cada cola: el evento, a quién entregarlo (None = a todos) y
+# cuándo se publicó (reloj monotónico, para medir la latencia).
+Entrada = tuple[CambioEstado, "frozenset[str] | None", float]
 
 
 class Suscriptor(ABC):
@@ -101,6 +105,7 @@ class BusEventos:
         self.fallidos = 0
         self.descartados = 0
         self.rechazados_por_circuito = 0
+        self._latencias_ms: deque[float] = deque(maxlen=MUESTRAS_LATENCIA)
 
     def suscribir(self, suscriptor: Suscriptor) -> None:
         self._suscriptores.append(suscriptor)
@@ -133,7 +138,8 @@ class BusEventos:
     def _encolar(self, evento: CambioEstado,
                  destinos: frozenset[str] | None = None) -> bool:
         try:
-            self._cola_de(evento.numero_guia).put_nowait((evento, destinos))
+            self._cola_de(evento.numero_guia).put_nowait(
+                (evento, destinos, time.perf_counter()))
             return True
         except asyncio.QueueFull:
             self.descartados += 1
@@ -174,11 +180,37 @@ class BusEventos:
         self._bucle = None
 
     @property
-    def estadisticas(self) -> dict[str, int]:
+    def estadisticas(self) -> dict[str, int | float | None]:
+        """Contadores y latencia de entrega en milisegundos.
+
+        La latencia va desde que el evento se publica (justo después del
+        cambio de estado) hasta que el suscriptor responde, reintentos
+        incluidos. Se calcula sobre las últimas MUESTRAS_LATENCIA entregas;
+        es None mientras no haya ninguna.
+        """
+        latencias = sorted(self._latencias_ms)
         return {"entregados": self.entregados, "reintentos": self.reintentos,
                 "fallidos": self.fallidos, "descartados": self.descartados,
                 "rechazados_por_circuito": self.rechazados_por_circuito,
-                "pendientes": sum(c.qsize() for c in self._colas), "en_cola_fallidos": len(self.cola_fallidos)}
+                "pendientes": sum(c.qsize() for c in self._colas),
+                "en_cola_fallidos": len(self.cola_fallidos),
+                "latencia_promedio_ms": _redondear(sum(latencias) / len(latencias)) if latencias else None,
+                "latencia_p95_ms": _redondear(_percentil(latencias, 95)) if latencias else None,
+                "latencia_max_ms": _redondear(latencias[-1]) if latencias else None}
+
+    def salud(self) -> dict:
+        """Estado de cada suscriptor. «degradado» si algún circuito está abierto."""
+        en_fallidos: dict[str, int] = {}
+        for fallido in self.cola_fallidos:
+            en_fallidos[fallido.suscriptor] = en_fallidos.get(fallido.suscriptor, 0) + 1
+        suscriptores = {
+            nombre: {"circuito": circuito.estado.value,
+                     "fallos_seguidos": circuito.fallos_seguidos,
+                     "aperturas": circuito.aperturas,
+                     "en_cola_fallidos": en_fallidos.get(nombre, 0)}
+            for nombre, circuito in self.circuitos.items()}
+        degradado = any(c.estado is not EstadoCircuito.CERRADO for c in self.circuitos.values())
+        return {"estado": "degradado" if degradado else "ok", "suscriptores": suscriptores}
 
     async def reprocesar_fallidos(self) -> int:
         """Vuelve a intentar los avisos de la cola de fallidos.
@@ -199,15 +231,17 @@ class BusEventos:
 
     async def _trabajar(self, cola: asyncio.Queue[Entrada]) -> None:
         while True:
-            evento, destinos = await cola.get()
+            evento, destinos, publicado = await cola.get()
             try:
                 # Todos los suscriptores a la vez: uno lento no retrasa a los demás.
-                await asyncio.gather(*(self._entregar(s, evento) for s in self._suscriptores
+                await asyncio.gather(*(self._entregar(s, evento, publicado)
+                                       for s in self._suscriptores
                                        if destinos is None or s.nombre in destinos))
             finally:
                 cola.task_done()
 
-    async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado) -> bool:
+    async def _entregar(self, suscriptor: Suscriptor, evento: CambioEstado,
+                        publicado: float | None = None) -> bool:
         """Entrega con reintentos y espera exponencial. Devuelve si se entregó.
 
         Si el circuito del suscriptor está abierto, no se le llama: el aviso
@@ -228,6 +262,8 @@ class BusEventos:
                 await asyncio.wait_for(suscriptor.notificar(evento), self._tiempo_limite)
                 circuito.registrar_exito()
                 self.entregados += 1
+                if publicado is not None:  # los reprocesados no cuentan: su espera fue manual
+                    self._latencias_ms.append((time.perf_counter() - publicado) * 1000)
                 if self.outbox is not None:
                     self.outbox.marcar_entregado(evento, suscriptor.nombre)
                 return True
@@ -243,3 +279,13 @@ class BusEventos:
             evento=evento, suscriptor=suscriptor.nombre, intentos=intentos,
             motivo=motivo, marca_tiempo=datetime.now()))
         return False
+
+
+def _percentil(ordenados: list[float], p: float) -> float:
+    """Percentil por rango más cercano sobre una lista ya ordenada."""
+    rango = math.ceil(p / 100 * len(ordenados))
+    return ordenados[max(rango, 1) - 1]
+
+
+def _redondear(ms: float) -> float:
+    return round(ms, 2)

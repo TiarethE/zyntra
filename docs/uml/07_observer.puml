@@ -12,6 +12,7 @@ class BusEventos <<Subject>> {
   -_espera_base : float
   -_bucle : asyncio.AbstractEventLoop | None
   +outbox : Outbox | None
+  -_latencias_ms : deque[float]
   +cola_fallidos : list[EventoFallido]
   +circuitos : dict[str, CircuitBreaker]
   +entregados : int
@@ -19,19 +20,20 @@ class BusEventos <<Subject>> {
   +fallidos : int
   +descartados : int
   +rechazados_por_circuito : int
-  +estadisticas : dict[str, int]
+  +estadisticas : dict[str, int | float | None]
   --
   +suscribir(suscriptor : Suscriptor)
   +publicar(evento : CambioEstado) : bool
   +iniciar()
   +detener()
   +reprocesar_fallidos() : int
+  +salud() : dict
   -_en_el_bucle() : bool
   -_encolar(evento : CambioEstado, destinos : frozenset[str] | None) : bool
   -_recuperar_pendientes()
   -_cola_de(numero_guia : str) : asyncio.Queue[Entrada]
   -_trabajar(cola : asyncio.Queue[Entrada])
-  -_entregar(suscriptor : Suscriptor, evento : CambioEstado) : bool
+  -_entregar(suscriptor : Suscriptor, evento : CambioEstado, publicado : float | None) : bool
 }
 class CircuitBreaker {
   -_umbral_fallos : int
@@ -129,6 +131,8 @@ note bottom of BusEventos
   · Con outbox (JSON Lines), cada evento se escribe antes de
     encolarse y cada entrega se anota; al iniciar se reencola
     solo lo que le falta a cada suscriptor.
+  · Mide la latencia de cada entrega (promedio, p95, máx. en ms);
+    salud() es «degradado» si algún circuito no está cerrado.
   · Circuit breaker: tras 5 fallos seguidos no se llama
     al suscriptor durante 30 s.
 end note
