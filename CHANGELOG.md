@@ -4,6 +4,9 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+### Cambiado
+- Interfaz web: logo nuevo (la Z es una ruta que termina en una estrella de la bandera), tipografía Archivo incluida en el proyecto, mapa de Honduras con los envíos en camino, ilustraciones de vehículos por tipo de envío, caja en perspectiva que cambia con las medidas, vehículo que avanza en el rastreo, contadores animados y cinco estrellas al entregar un envío. Respeta la opción de reducir movimiento del sistema (#22).
+
 ### Agregado
 - Interfaz web (`python -m interfaz`, FastAPI): panel de envíos, nuevo envío con cotización en vivo, rastreo, detalle con cambios de estado y simulación de recorrido, y monitor del módulo de respuesta con simulación de caída del servicio de SMS (#20).
 - Suscriptor `TransmisorEnVivo`: reenvía cada cambio de estado a las pantallas abiertas por WebSocket.
