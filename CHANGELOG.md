@@ -5,6 +5,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 ## [Sin publicar]
 
 ### Cambiado
+- Interfaz web rehecha: barra lateral con secciones, panel con indicadores y gráficas de la última semana, tabla de envíos con filtros y detalle en panel lateral, nuevo envío en 5 pasos con etiqueta imprimible (código de barras Code 39), monitor de latencia en vivo, buscador rápido (`Ctrl K`), campana de movimientos y modo oscuro. 24 envíos de ejemplo repartidos en 7 días (#24).
 - Interfaz web: logo nuevo (la Z es una ruta que termina en una estrella de la bandera), tipografía Archivo incluida en el proyecto, mapa de Honduras con los envíos en camino, ilustraciones de vehículos por tipo de envío, caja en perspectiva que cambia con las medidas, vehículo que avanza en el rastreo, contadores animados y cinco estrellas al entregar un envío. Respeta la opción de reducir movimiento del sistema (#22).
 
 ### Agregado

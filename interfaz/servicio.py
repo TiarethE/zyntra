@@ -325,7 +325,9 @@ class ServicioZyntra:
                 "destino": envio.direccion_destino,
                 "pais_destino": getattr(envio, "pais_destino", "Honduras"),
                 "total": _monto(envio.calcular_costo()),
+                "creado": envio.rastreo[0].marca_tiempo.isoformat(timespec="seconds"),
                 "ultimo_movimiento": envio.rastreo[-1].marca_tiempo.isoformat(timespec="seconds"),
+                "peso_kg": str(envio.peso_facturable_kg.quantize(Decimal("0.01"))),
                 "simulando": bool(meta and meta.simulando)}
 
     @staticmethod
@@ -401,10 +403,12 @@ class ServicioZyntra:
                             "fragil": True}]},
              [NombreEstado.EN_TRANSITO, NombreEstado.EN_REPARTO, NombreEstado.ENTREGADO]),
         ]
-        for n, (datos, pasos) in enumerate(ejemplos):
+        ejemplos = [(datos, pasos, 9 - n * 2) for n, (datos, pasos) in enumerate(ejemplos)]
+        ejemplos = _ejemplos_semana() + ejemplos
+        for datos, pasos, horas_atras in ejemplos:
             guia = self.registrar(datos)["guia"]
             envio = self.gestor.obtener(guia)
-            inicio = ahora - timedelta(hours=26 - n * 5)
+            inicio = ahora - timedelta(hours=horas_atras)
             # Solo para los ejemplos: se adelanta la hora de recepción para que
             # el rastreo se vea como un recorrido real de varias horas.
             envio._rastreo[0] = replace(envio.rastreo[0], marca_tiempo=inicio)
@@ -413,6 +417,76 @@ class ServicioZyntra:
             for estado_paso, texto in RECORRIDO[envio.tipo]:
                 textos.setdefault(estado_paso, texto)  # el primer texto de cada estado
             for i, destino in enumerate(pasos, start=1):
+                momento = min(inicio + timedelta(hours=3 * i), ahora - timedelta(minutes=5 * (len(pasos) - i + 1)))
                 envio.cambiar_estado(destino, descripcion=textos.get(destino, ""),
-                                     momento=inicio + timedelta(hours=3 * i),
-                                     **self._detalles(envio, destino))
+                                     momento=momento, **self._detalles(envio, destino))
+
+
+# Clientes, destinos y contenidos de los envíos de la última semana (datos de ejemplo).
+_CLIENTES = [
+    ("Daniela Castillo", "dcastillo@correo.hn"), ("Óscar Banegas", "obanegas@correo.hn"),
+    ("Karla Zelaya", "kzelaya@correo.hn"), ("Luis Fernando Paz", "lfpaz@correo.hn"),
+    ("Gabriela Midence", "gmidence@correo.hn"), ("Roberto Funes", "rfunes@correo.hn"),
+    ("Sofía Andino", "sandino@correo.hn"), ("Héctor Bonilla", "hbonilla@correo.hn"),
+    ("Valeria Matamoros", "vmatamoros@correo.hn"), ("Marco Antonio Ruiz", "maruiz@correo.hn"),
+    ("Paola Cárcamo", "pcarcamo@correo.hn"), ("Iván Rosales", "irosales@correo.hn"),
+    ("Nicole Ávila", "navila@correo.hn"), ("Fernando Lagos", "flagos@correo.hn"),
+]
+_NACIONALES = ["Barrio Guamilito, San Pedro Sula", "Col. Palmira, Tegucigalpa",
+               "Barrio El Centro, Juticalpa", "Col. El Sauce, La Ceiba",
+               "Barrio San Juan, Comayagua ", "Barrio Mercedes, Santa Rosa de Copán",
+               "Col. Las Palmas, Danlí", "West End, Roatán", "Barrio El Centro, Choluteca"]
+_INTERNACIONALES = [("4500 Sunset Blvd, Los Ángeles", "Estados Unidos"),
+                    ("Calle Gran Vía 28, Madrid", "España"),
+                    ("Av. Reforma 222, Ciudad de México", "México"),
+                    ("Zona 10, Ciudad de Guatemala", "Guatemala"),
+                    ("Av. Central, San José", "Costa Rica"),
+                    ("120 King St W, Toronto", "Canadá")]
+_CONTENIDOS = [("Café de Marcala", "1.5", 900), ("Puros de Danlí", "0.6", 1200),
+               ("Ropa", "2.0", 800), ("Libros", "3.2", 600), ("Repuestos", "4.5", 2500),
+               ("Medicamentos", "0.4", 700), ("Artesanía de Valle de Ángeles", "1.2", 1100),
+               ("Documentos", "0.3", 0)]
+
+
+def _ejemplos_semana() -> list[tuple[dict, list[NombreEstado], float]]:
+    """Unos 20 envíos repartidos en los últimos 7 días, casi todos ya entregados.
+
+    Son fijos (no aleatorios) para que la pantalla se vea igual en cada demostración.
+    """
+    E = NombreEstado
+    completo = {TipoEnvio.NACIONAL: [E.EN_TRANSITO, E.EN_REPARTO, E.ENTREGADO],
+                TipoEnvio.EXPRESS: [E.EN_TRANSITO, E.EN_REPARTO, E.ENTREGADO],
+                TipoEnvio.INTERNACIONAL: [E.EN_TRANSITO, E.RETENIDO_EN_ADUANA, E.EN_TRANSITO,
+                                          E.EN_REPARTO, E.ENTREGADO]}
+    tipos = [TipoEnvio.NACIONAL, TipoEnvio.EXPRESS, TipoEnvio.NACIONAL, TipoEnvio.INTERNACIONAL,
+             TipoEnvio.NACIONAL, TipoEnvio.EXPRESS, TipoEnvio.INTERNACIONAL]
+    resultado = []
+    for n in range(20):
+        tipo = tipos[n % len(tipos)]
+        nombre, email = _CLIENTES[n % len(_CLIENTES)]
+        contenido, peso, valor = _CONTENIDOS[(n * 3) % len(_CONTENIDOS)]
+        lado = 15 + (n * 7) % 25
+        datos: dict[str, Any] = {
+            "tipo": tipo.value, "sucursal_origen": 1 + n % len(SUCURSALES),
+            "cliente": {"nombre": nombre, "email": email, "telefono": f"9{n:03d}-{(n * 37) % 10000:04d}"},
+            "asegurar": n % 3 == 0 and valor > 0,
+            "paquetes": [{"contenido": contenido, "peso_kg": peso, "alto_cm": lado, "ancho_cm": 20,
+                          "largo_cm": 30, "valor_declarado": valor or (500 if tipo is TipoEnvio.INTERNACIONAL else 0),
+                          "fragil": n % 4 == 1}]}
+        if tipo is TipoEnvio.INTERNACIONAL:
+            direccion, pais = _INTERNACIONALES[n % len(_INTERNACIONALES)]
+            datos.update(direccion_destino=direccion, pais_destino=pais)
+        else:
+            datos["direccion_destino"] = _NACIONALES[n % len(_NACIONALES)]
+        horas_atras = 168 - n * 7.5
+        pasos = completo[tipo]
+        if n == 15:
+            pasos = pasos[:2]           # en reparto (o en aduana si es internacional)
+        elif n in (16, 18):
+            pasos = []                  # recién recibido en la sucursal
+        elif n == 17:
+            pasos = pasos[:1]           # todavía en tránsito
+        elif n == 19:
+            pasos = [E.CANCELADO]       # cancelado por el cliente
+        resultado.append((datos, pasos, horas_atras))
+    return resultado

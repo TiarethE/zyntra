@@ -33,13 +33,13 @@ Se abre el navegador en http://127.0.0.1:8000. Para detenerla, presione `Ctrl+C`
 
 | Pantalla | Qué hace | Patrón que muestra |
 | --- | --- | --- |
-| Panel | Envíos, indicadores y movimientos en vivo | Observer |
-| Nuevo envío | Formulario con cotización en lempiras mientras se llena | Factory Method, Decorator |
+| Panel | Indicadores de los últimos 7 días, mapa con los envíos en camino, gráficas por día, por estado y por servicio, y actividad en vivo | Observer, State |
+| Envíos | Tabla con búsqueda, filtros y orden; cada fila abre el detalle en un panel lateral, con mapa, cambios de estado válidos y «Simular recorrido» | State, Decorator |
+| Nuevo envío | Asistente en 5 pasos con validación y cotización en lempiras mientras se llena; al final, etiqueta con código de barras lista para imprimir | Factory Method, Decorator |
 | Rastrear | Vista del cliente; se actualiza sola | Observer |
-| Detalle del envío | Solo ofrece los cambios de estado válidos; «Simular recorrido» lo mueve solo | State |
-| Sistema | Métricas, circuitos y cola de fallidos; permite simular la caída del SMS | Módulo de respuesta |
+| Sistema | Salud del bus, latencia en vivo, circuitos y cola de fallidos; permite simular la caída del SMS | Módulo de respuesta |
 
-El interruptor «Mostrar patrones» de la barra lateral marca en cada pantalla qué patrón está trabajando. Los datos viven en memoria: al reiniciar vuelven los cuatro envíos de ejemplo. El código está en `interfaz/` (`servicio.py` traduce la pantalla al dominio, `app.py` es la API y `estatico/` la página).
+Atajos: `Ctrl K` (`⌘ K` en Mac) abre el buscador rápido de guías, clientes y acciones; la campana muestra los movimientos recientes; el botón de luna cambia a modo oscuro. El interruptor «Patrones» de la barra superior marca en cada pantalla qué patrón está trabajando. Los datos viven en memoria: al reiniciar vuelven los 24 envíos de ejemplo de la última semana. El código está en `interfaz/` (`servicio.py` traduce la pantalla al dominio, `app.py` es la API y `estatico/` la página).
 
 ## Patrones de diseño
 
