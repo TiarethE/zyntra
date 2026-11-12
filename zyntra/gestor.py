@@ -65,5 +65,10 @@ class GestorEnvios:
                     marca_tiempo=registro.marca_tiempo))
         return registro
 
+    def listar(self) -> list[Envio]:
+        """Todos los envíos, del más reciente al más antiguo."""
+        with self._candado_registro:
+            return list(reversed(self._envios.values()))
+
     def rastrear(self, numero_guia: str) -> tuple[RegistroRastreo, ...]:
         return self.obtener(numero_guia).rastreo

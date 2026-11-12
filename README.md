@@ -6,12 +6,40 @@ Proyecto integrador de Ingeniería de Software II, Universidad Anáhuac Mayab.
 
 ## Cómo ejecutarlo
 
-Requiere Python 3.11 o superior. No usa librerías externas.
+Requiere Python 3.11 o superior. El núcleo no usa librerías externas; la interfaz web usa FastAPI (ver abajo).
 
 ```bash
 python -m zyntra.demo        # demostración de punta a punta
-python -m unittest -v        # 78 pruebas automáticas
+python -m unittest -v        # 90 pruebas automáticas
 ```
+
+## Interfaz web
+
+Aplicación visual que usa el mismo código de `zyntra` (los patrones y el módulo de tiempo real). Se ve en el navegador.
+
+**Paso 1.** Instale las dependencias (solo la primera vez):
+
+```bash
+pip install -r requirements.txt
+```
+
+**Paso 2.** Arranque la aplicación:
+
+```bash
+python -m interfaz
+```
+
+Se abre el navegador en http://127.0.0.1:8000. Para detenerla, presione `Ctrl+C` en la terminal.
+
+| Pantalla | Qué hace | Patrón que muestra |
+| --- | --- | --- |
+| Panel | Envíos, indicadores y movimientos en vivo | Observer |
+| Nuevo envío | Formulario con cotización en lempiras mientras se llena | Factory Method, Decorator |
+| Rastrear | Vista del cliente; se actualiza sola | Observer |
+| Detalle del envío | Solo ofrece los cambios de estado válidos; «Simular recorrido» lo mueve solo | State |
+| Sistema | Métricas, circuitos y cola de fallidos; permite simular la caída del SMS | Módulo de respuesta |
+
+El interruptor «Mostrar patrones» de la barra lateral marca en cada pantalla qué patrón está trabajando. Los datos viven en memoria: al reiniciar vuelven los cuatro envíos de ejemplo. El código está en `interfaz/` (`servicio.py` traduce la pantalla al dominio, `app.py` es la API y `estatico/` la página).
 
 ## Patrones de diseño
 
@@ -58,6 +86,7 @@ zyntra/
   notificadores.py       Observadores concretos
   gestor.py              Capa de aplicación que une los patrones
   demo.py                Demostración
+interfaz/                Interfaz web (FastAPI + HTML, sin internet)
 tests/                   Pruebas automáticas
 docs/uml/                Diagramas UML (PlantUML) e imágenes en docs/uml/img
 ```
