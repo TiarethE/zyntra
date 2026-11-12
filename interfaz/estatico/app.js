@@ -22,6 +22,44 @@ const clase = (estadoEnvio) => "e-" + estadoEnvio.normalize("NFD").replace(/[̀-
   .toLowerCase().replace(/\s+/g, "-");
 const insignia = (e) => `<span class="insignia ${clase(e)}">${esc(e)}</span>`;
 const lempiras = (m) => "L " + Number(m).toLocaleString("es-HN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const sinMovimiento = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const icono = (tipo, clase = "") => `<svg class="vehiculo ${tipo} ${clase}" viewBox="0 0 32 20" aria-hidden="true"><use href="#v-${tipo}"/></svg>`;
+const vacio = (texto) => `<div class="vacio"><svg class="ilustracion" viewBox="0 0 120 90" aria-hidden="true"><use href="#caja-vacia"/></svg><p>${texto}</p></div>`;
+
+/** Cuenta desde el valor que se mostraba hasta el nuevo, para que el cambio se note. */
+function contar(nodo, valor, formato = (n) => Math.round(n).toLocaleString("es-HN")) {
+  if (!nodo) return;
+  const antes = Number(nodo.dataset.valor ?? 0);
+  nodo.dataset.valor = valor;
+  if (antes === valor || sinMovimiento()) { nodo.textContent = formato(valor); return; }
+  const inicio = performance.now(), dur = 700;
+  const paso = (ahora) => {
+    const x = Math.min(1, (ahora - inicio) / dur);
+    nodo.textContent = formato(antes + (valor - antes) * (1 - Math.pow(1 - x, 3)));
+    if (x < 1) requestAnimationFrame(paso);
+  };
+  requestAnimationFrame(paso);
+  nodo.closest(".kpi")?.classList.remove("cambio");
+  void nodo.offsetWidth;
+  nodo.closest(".kpi")?.classList.add("cambio");
+}
+
+/** Cinco estrellas, como las de la bandera, cuando un envío se entrega. */
+function festejar() {
+  if (sinMovimiento()) return;
+  const caja = $("#festejo");
+  for (let i = 0; i < 5; i++) {
+    const ang = (-90 + i * 72) * Math.PI / 180;
+    const e = document.createElement("span");
+    e.style.setProperty("--dx", `${Math.cos(ang) * 120}px`);
+    e.style.setProperty("--dy", `${Math.sin(ang) * 120}px`);
+    e.style.animationDelay = `${i * 40}ms`;
+    e.innerHTML = `<svg viewBox="0 0 20 20"><use href="#estrella"/></svg>`;
+    caja.append(e);
+    setTimeout(() => e.remove(), 1400);
+  }
+}
+
 const patron = (n) => `<span class="patron" title="Patrón de diseño">${esc(n)}</span>`;
 const fecha = (iso) => new Date(iso).toLocaleString("es-HN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const hora = (iso) => new Date(iso).toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -67,6 +105,10 @@ function ruta() {
   estado.guiaAbierta = null;
   $$("nav a").forEach((a) => a.classList.toggle("activa",
     a.dataset.vista === nombre || (nombre === "envio" && a.dataset.vista === "panel")));
+  estado.firmaMapa = null;
+  vista.classList.remove("entrando");
+  void vista.offsetWidth;
+  vista.classList.add("entrando");
   (vistas[nombre] || verPanel)(param ? decodeURIComponent(param) : undefined);
   vista.focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -80,12 +122,22 @@ async function verPanel() {
       <div><h1>Panel de envíos</h1><p>Lo que está pasando ahora en la red de Zyntra.</p></div>
       <a class="boton" href="#/nuevo">＋ Nuevo envío</a>
     </div>
-    <div class="rejilla kpis" id="kpis"></div>
+    <div class="rejilla dos-columnas portada">
+      <section class="tarjeta tarjeta-mapa">
+        <div class="cab"><h2>Envíos en camino <span class="punto-vivo"></span></h2>
+          <div class="leyenda">${icono("nacional")}Nacional ${icono("express")}Express ${icono("internacional")}Internacional</div></div>
+        <div class="cuerpo"><div id="mapa-red" class="caja-mapa"></div></div>
+      </section>
+      <div class="rejilla kpis" id="kpis">
+        ${[["activos", "Envíos activos"], ["aduana", "En aduana"], ["entregados", "Entregados"], ["ingresos", "Ingresos"]].map(([id, etq]) =>
+          `<div class="tarjeta kpi"><div class="etq">${etq}</div><div class="valor num" id="k-${id}">0</div><div class="sub" id="s-${id}"></div></div>`).join("")}
+      </div>
+    </div>
     <div class="rejilla dos-columnas">
       <section class="tarjeta">
         <div class="cab"><h2>Envíos</h2><div class="filtros" id="filtros"></div></div>
         <div class="cuerpo" style="padding-top:8px"><table class="tabla">
-          <thead><tr><th>Guía</th><th>Cliente</th><th class="ocultar-movil">Ruta</th><th>Estado</th><th class="ocultar-movil" style="text-align:right">Total</th></tr></thead>
+          <thead><tr><th>Guía</th><th class="ocultar-movil">Cliente</th><th class="ocultar-movil">Ruta</th><th>Estado</th><th class="ocultar-movil" style="text-align:right">Total</th></tr></thead>
           <tbody id="lista"></tbody></table></div>
       </section>
       <section class="tarjeta">
@@ -105,13 +157,17 @@ async function cargarEnvios() {
   const e = estado.envios;
   const activos = e.filter((x) => !["Entregado", "Cancelado"].includes(x.estado));
   const ingresos = e.filter((x) => x.estado !== "Cancelado").reduce((s, x) => s + Number(x.total), 0);
-  $("#kpis").innerHTML = [
-    ["Envíos activos", activos.length, `${e.length} en total`],
-    ["En aduana", e.filter((x) => x.estado === "Retenido en aduana").length, "solo internacionales"],
-    ["Entregados", e.filter((x) => x.estado === "Entregado").length, "con rastreo completo"],
-    ["Ingresos", lempiras(ingresos), "lempiras (HNL)"],
-  ].map(([etq, valor, sub]) => `<div class="tarjeta kpi"><div class="etq">${etq}</div>
-    <div class="valor num">${esc(valor)}</div><div class="sub">${sub}</div></div>`).join("");
+  contar($("#k-activos"), activos.length);
+  contar($("#k-aduana"), e.filter((x) => x.estado === "Retenido en aduana").length);
+  contar($("#k-entregados"), e.filter((x) => x.estado === "Entregado").length);
+  contar($("#k-ingresos"), ingresos, lempiras);
+  $("#s-activos").textContent = `${e.length} en total`;
+  $("#s-aduana").textContent = "solo internacionales";
+  $("#s-entregados").textContent = "con rastreo completo";
+  $("#s-ingresos").textContent = "lempiras (HNL)";
+  // El mapa solo se vuelve a dibujar si cambió algún envío en camino (así no se reinicia el movimiento).
+  const firma = activos.map((x) => x.guia + x.estado).join("|");
+  if (firma !== estado.firmaMapa) { estado.firmaMapa = firma; Mapa.red($("#mapa-red"), e); }
 
   const opciones = ["Todos", "Registrado", "En tránsito", "Retenido en aduana", "En reparto", "Entregado"];
   $("#filtros").innerHTML = opciones.map((o) =>
@@ -121,12 +177,12 @@ async function cargarEnvios() {
   const visibles = e.filter((x) => estado.filtro === "Todos" || x.estado === estado.filtro);
   $("#lista").innerHTML = visibles.length ? visibles.map((x) => `
     <tr data-guia="${esc(x.guia)}">
-      <td><div class="guia">${esc(x.guia)}</div><div class="tipo-chip ${x.tipo}">${esc(x.tipo)}</div></td>
-      <td>${esc(x.cliente_nombre)}<div class="tenue">${fecha(x.ultimo_movimiento)}</div></td>
+      <td><div class="con-icono">${icono(x.tipo)}<div><div class="guia">${esc(x.guia)}</div><div class="tipo-chip ${x.tipo}">${esc(x.tipo)}</div></div></div></td>
+      <td class="ocultar-movil">${esc(x.cliente_nombre)}<div class="tenue">${fecha(x.ultimo_movimiento)}</div></td>
       <td class="ocultar-movil">${esc(x.origen)} → ${esc(x.tipo === "internacional" ? x.pais_destino : x.destino)}</td>
       <td>${insignia(x.estado)}${x.simulando ? ' <span class="tenue">· en ruta…</span>' : ""}</td>
       <td class="monto ocultar-movil" style="text-align:right">${lempiras(x.total)}</td>
-    </tr>`).join("") : `<tr><td colspan="5" class="vacio">No hay envíos en este estado.</td></tr>`;
+    </tr>`).join("") : `<tr><td colspan="5">${vacio("No hay envíos en este estado.")}</td></tr>`;
   $$("#lista tr[data-guia]").forEach((tr) => tr.onclick = () => location.hash = "#/envio/" + tr.dataset.guia);
 }
 
@@ -136,7 +192,7 @@ function pintarFeed() {
   feed.innerHTML = estado.feed.length ? estado.feed.map((ev) => `
     <li><span class="guia" data-guia="${esc(ev.guia)}">${esc(ev.guia)}</span> pasó a ${insignia(ev.nuevo)}
       <div>${esc(ev.descripcion)}</div><div class="cuando">${hora(ev.hora)}</div></li>`).join("")
-    : `<li class="vacio" style="animation:none">Aún no hay movimientos en esta sesión.<br>Abra un envío y presione «Simular recorrido».</li>`;
+    : `<li style="animation:none;border:0">${vacio("Aún no hay movimientos en esta sesión. Abra un envío y presione «Simular recorrido».")}</li>`;
   $$("#feed .guia").forEach((g) => g.onclick = () => location.hash = "#/envio/" + g.dataset.guia);
 }
 
@@ -161,6 +217,7 @@ function verNuevo() {
         <div class="seccion-form"><h2><span class="paso">1</span>Tipo de envío ${patron("Factory Method")}</h2>
           <div class="tipos">${cat.tipos.map((t) => `
             <label class="tipo"><input type="radio" name="tipo" value="${t.id}" ${f.tipo === t.id ? "checked" : ""}>
+              ${icono(t.id, "grande")}
               <strong style="text-transform:capitalize">${t.id}</strong><small>${textoTipo[t.id]}</small>
               <span class="tarifa">${lempiras(t.fija)} + ${lempiras(t.por_kg)}/kg</span></label>`).join("")}</div>
           <div class="explica">Cada tipo tiene su propio <b>creador</b> (<code>EnvioNacionalCreator</code>, <code>EnvioExpressCreator</code>, <code>EnvioInternacionalCreator</code>) que valida sus reglas antes de crear el envío.</div>
@@ -196,7 +253,9 @@ function verNuevo() {
       <aside class="tarjeta cotizacion">
         <div class="cab"><h2>Cotización</h2><span class="tenue" id="moneda">HNL</span></div>
         <div class="cuerpo">
-          <div id="cotizacion"><div class="vacio">Agregue el peso y las medidas del paquete para ver el costo.</div></div>
+          <div id="mapa-cotizacion" class="caja-mapa chica"></div>
+          <div id="cotizacion"></div>
+          <div class="total"><span>Total</span><strong class="num" id="total-cot" data-valor="0">L 0.00</strong></div>
           <div id="error-registro"></div>
           <button class="grande" id="registrar" type="button">Registrar envío</button>
           <p class="nota">Las tarifas vienen de <code>tarifas.json</code>. Cambiar un precio es editar ese archivo.</p>
@@ -209,6 +268,7 @@ function verNuevo() {
   form.addEventListener("change", leerFormulario);
   $("#agregar").onclick = () => { f.paquetes.push(paqueteVacio()); pintarPaquetes(); cotizar(); };
   $("#registrar").onclick = registrar;
+  mapaCotizacion();
   cotizar();
 }
 
@@ -226,10 +286,47 @@ function pintarPaquetes() {
         <label class="campo">Valor (L)<input type="number" min="0" data-c="valor_declarado" value="${esc(p.valor_declarado)}" placeholder="0"></label>
       </div>
       <div class="pie-paq"><label class="casilla"><input type="checkbox" data-c="fragil" ${p.fragil ? "checked" : ""}> Frágil</label></div>
+      <div class="vista-caja" aria-hidden="true">${cajaIso(p)}</div>
     </div>`).join("");
   $$("[data-quitar]").forEach((b) => b.onclick = () => {
     f.paquetes.splice(Number(b.dataset.quitar), 1); pintarPaquetes(); cotizar();
   });
+}
+
+/** Dibujo de la caja en perspectiva, con sus proporciones reales. */
+function cajaIso(p) {
+  const n = (v, d) => Number(v) > 0 ? Number(v) : d;
+  const completo = paqueteCompleto(p);
+  const a = n(p.largo_cm, 40), b = n(p.ancho_cm, 30), c = n(p.alto_cm, 20);
+  const s = 46 / Math.max(a, b, c);
+  const O = [70, 116], X = [0.866, -0.5], Y = [-0.866, -0.5];
+  const mas = (P, V, k) => [P[0] + V[0] * k, P[1] + V[1] * k];
+  const sube = (P) => [P[0], P[1] - c * s];
+  const Gx = mas(O, X, a * s), Gy = mas(O, Y, b * s), Gxy = mas(Gx, Y, b * s);
+  const pts = (...ps) => ps.map((q) => q.map((v) => v.toFixed(1)).join(",")).join(" ");
+  const cinta1 = sube(mas(O, Y, b * s / 2)), cinta2 = mas(cinta1, X, a * s);
+  const peso = Number(p.peso_kg) > 0 ? `${p.peso_kg} kg` : "";
+  return `<svg viewBox="0 0 140 130" class="${completo ? "" : "fantasma"}">
+    <ellipse cx="70" cy="${(O[1] + 4).toFixed(1)}" rx="${(0.866 * (a + b) * s / 2 + 6).toFixed(1)}" ry="6" class="sombra-caja"/>
+    <polygon points="${pts(O, Gy, sube(Gy), sube(O))}" class="cara izq"/>
+    <polygon points="${pts(O, Gx, sube(Gx), sube(O))}" class="cara der"/>
+    <polygon points="${pts(sube(O), sube(Gx), sube(Gxy), sube(Gy))}" class="cara arriba"/>
+    <line x1="${cinta1[0].toFixed(1)}" y1="${cinta1[1].toFixed(1)}" x2="${cinta2[0].toFixed(1)}" y2="${cinta2[1].toFixed(1)}" class="cinta"/>
+    ${p.fragil ? `<g class="sello-fragil" transform="translate(${((O[0] + Gx[0]) / 2).toFixed(1)} ${((O[1] + Gx[1]) / 2 - c * s / 2).toFixed(1)}) skewY(-30)"><rect x="-17" y="-6" width="34" height="12" rx="2"/><text y="3.5" text-anchor="middle">FRÁGIL</text></g>` : ""}
+    <text x="70" y="128" text-anchor="middle" class="peso-caja">${completo ? esc(peso) : "Escriba las medidas"}</text>
+  </svg>`;
+}
+
+function mapaCotizacion() {
+  const f = estado.formulario, caja = $("#mapa-cotizacion");
+  if (!caja) return;
+  const sucursal = estado.catalogo.sucursales.find((x) => String(x.id) === String(f.sucursal_origen));
+  const envio = { guia: "cotizacion", tipo: f.tipo, estado: "En tránsito", origen: sucursal?.ciudad,
+    destino: f.direccion_destino, pais_destino: f.pais_destino || "Estados Unidos" };
+  const firma = [envio.tipo, envio.origen, envio.destino, envio.pais_destino].join("|");
+  if (firma === caja.dataset.firma) return;
+  caja.dataset.firma = firma;
+  Mapa.red(caja, [envio]);
 }
 
 let esperaCotizar;
@@ -245,7 +342,14 @@ function leerFormulario(ev) {
   $$(".paquete").forEach((el) => {
     const p = f.paquetes[Number(el.dataset.i)];
     $$("[data-c]", el).forEach((inp) => p[inp.dataset.c] = inp.type === "checkbox" ? inp.checked : inp.value);
+    const vistaCaja = $(".vista-caja", el), nueva = cajaIso(p);
+    if (vistaCaja.dataset.dibujo !== nueva) {
+      vistaCaja.dataset.dibujo = nueva;
+      vistaCaja.innerHTML = nueva;
+      vistaCaja.classList.remove("pop"); void vistaCaja.offsetWidth; vistaCaja.classList.add("pop");
+    }
   });
+  mapaCotizacion();
   $("#campo-pais").hidden = f.tipo !== "internacional";
   if (ev && ev.target.name?.startsWith("c_")) return;  // los datos del cliente no cambian el costo
   clearTimeout(esperaCotizar);
@@ -262,16 +366,23 @@ async function cotizar() {
   const caja = $("#cotizacion");
   if (!caja) return;
   if (!estado.formulario.paquetes.some(paqueteCompleto)) {
-    caja.innerHTML = `<div class="vacio">Agregue el peso y las medidas del paquete para ver el costo.</div>`;
+    caja.innerHTML = `<p class="nota" style="margin:4px 0 0">Agregue el peso y las medidas del paquete para ver el costo.</p>`;
+    contar($("#total-cot"), 0, lempiras);
     return;
   }
   try {
     const c = await api("/api/cotizar", { method: "POST", body: cuerpoEnvio() });
+    // Cada capa del Decorator que aparece entra apilándose sobre las anteriores.
+    const tipoConcepto = (t) => t.split(" (")[0];
+    const antes = new Set($$("tr[data-concepto]", caja).map((tr) => tr.dataset.concepto));
     caja.innerHTML = `
-      <table class="desglose">${c.desglose.map((d) =>
-        `<tr><td>${esc(d.concepto)}</td><td class="monto">${lempiras(d.monto)}</td></tr>`).join("")}</table>
-      <div class="total"><span>Total</span><strong class="num">${lempiras(c.total)}</strong></div>
-      <div class="nota" style="margin:-8px 0 12px">Peso facturable: ${esc(c.peso_facturable_kg)} kg</div>`;
+      <table class="desglose">${c.desglose.map((d, i) => {
+        const clave = tipoConcepto(d.concepto);
+        return `<tr data-concepto="${esc(clave)}" class="${antes.size && !antes.has(clave) ? "capa-nueva" : ""}" style="--i:${i}">
+          <td>${esc(d.concepto)}</td><td class="monto">${lempiras(d.monto)}</td></tr>`;
+      }).join("")}</table>
+      <div class="nota" style="margin:8px 0 0">Peso facturable: ${esc(c.peso_facturable_kg)} kg</div>`;
+    contar($("#total-cot"), Number(c.total), lempiras);
   } catch (e) {
     caja.innerHTML = `<div class="error-form">${esc(e.message)}</div>`;
   }
@@ -321,13 +432,14 @@ async function pintarRastreo(guia, animar = false) {
     const d = await api("/api/envios/" + encodeURIComponent(guia));
     estado.guiaAbierta = d.guia;
     caja.innerHTML = `
-      <section class="tarjeta">${cabeceraEnvio(d)}${progreso(d)}</section>
+      <section class="tarjeta">${cabeceraEnvio(d)}<div class="caja-mapa ruta" id="mapa-ruta"></div>${progreso(d)}</section>
       <div class="rejilla dos-columnas" style="margin-top:18px">
         <section class="tarjeta"><div class="cab"><h2>Historial</h2></div><div class="cuerpo">${lineaTiempo(d, animar)}</div></section>
         <section class="tarjeta"><div class="cab"><h2>Avisos que recibió</h2></div><div class="cuerpo">${mensajes(d)}</div></section>
       </div>`;
+    Mapa.ruta($("#mapa-ruta"), d);
   } catch (e) {
-    caja.innerHTML = `<div class="tarjeta"><div class="vacio">${esc(e.message)}</div></div>`;
+    caja.innerHTML = `<div class="tarjeta">${vacio(esc(e.message))}</div>`;
   }
 }
 
@@ -335,12 +447,12 @@ async function pintarRastreo(guia, animar = false) {
 async function verEnvio(guia, animar = false) {
   let d;
   try { d = await api("/api/envios/" + encodeURIComponent(guia)); }
-  catch (e) { vista.innerHTML = `<div class="tarjeta"><div class="vacio">${esc(e.message)}</div></div>`; return; }
+  catch (e) { vista.innerHTML = `<div class="tarjeta">${vacio(esc(e.message))}</div>`; return; }
   estado.guiaAbierta = d.guia;
   const destinos = d.siguientes;
   vista.innerHTML = `
     <div class="encabezado"><div><a href="#/panel">← Panel</a></div></div>
-    <section class="tarjeta">${cabeceraEnvio(d)}${progreso(d)}</section>
+    <section class="tarjeta">${cabeceraEnvio(d)}<div class="caja-mapa ruta" id="mapa-ruta"></div>${progreso(d)}</section>
     <div class="rejilla dos-columnas" style="margin-top:18px">
       <div class="rejilla">
         <section class="tarjeta">
@@ -348,7 +460,7 @@ async function verEnvio(guia, animar = false) {
           <div class="cuerpo">
             ${destinos.length ? `<div class="acciones">${destinos.map((e) =>
               `<button class="${e === "Cancelado" ? "peligro" : ""}" data-destino="${esc(e)}">${esc(VERBO[e] || e)}</button>`).join("")}
-              <button class="secundario" id="simular" ${d.simulando ? "disabled" : ""}>${d.simulando ? "Simulando recorrido…" : "▶ Simular recorrido"}</button></div>`
+              <button class="secundario" id="simular" ${d.simulando ? "disabled" : ""}>${d.simulando ? "Simulando recorrido…" : `${icono(d.tipo)} Simular recorrido`}</button></div>`
               : `<div class="vacio" style="padding:8px">El envío está «${esc(d.estado)}». Es un estado final: ya no se puede mover.</div>`}
             <div class="explica">Solo aparecen los cambios que el estado actual (<code>${esc(CLASE_ESTADO[d.estado])}</code>) permite. «Retener en aduana» solo existe para internacionales: la regla vive en la clase <code>EnTransito</code>.</div>
           </div>
@@ -372,6 +484,7 @@ async function verEnvio(guia, animar = false) {
           <div class="explica"><code>NotificadorCliente</code> está suscrito al bus: recibe cada cambio y redacta el correo. El envío no sabe que existe.</div></div></section>
       </div>
     </div>`;
+  Mapa.ruta($("#mapa-ruta"), d);
   $$("[data-destino]").forEach((b) => b.onclick = () => mover(d.guia, b.dataset.destino));
   const sim = $("#simular");
   if (sim) sim.onclick = async () => {
@@ -391,8 +504,8 @@ async function mover(guia, destino) {
 function cabeceraEnvio(d) {
   const destino = d.tipo === "internacional" ? `${d.destino}, ${d.pais_destino}` : d.destino;
   return `<div class="cabecera-envio">
-    <div><div class="tipo-chip ${d.tipo}">Envío ${esc(d.tipo)}</div><div class="guia-grande">${esc(d.guia)}</div>
-      <div class="ruta">${esc(d.sucursal_origen)} → ${esc(destino)}</div></div>
+    <div class="con-icono">${icono(d.tipo, "grande")}<div><div class="tipo-chip ${d.tipo}">Envío ${esc(d.tipo)}</div><div class="guia-grande">${esc(d.guia)}</div>
+      <div class="ruta">${esc(d.sucursal_origen)} → ${esc(destino)}</div></div></div>
     <div style="text-align:right">${insignia(d.estado)}<div class="tenue" style="margin-top:6px;font-size:.82rem">Último movimiento: ${fecha(d.ultimo_movimiento)}</div></div></div>`;
 }
 
@@ -491,6 +604,7 @@ function conectar() {
       if (nombre === "envio") verEnvio(ev.guia, true);
       if (nombre === "rastrear") pintarRastreo(ev.guia, true);
       aviso(`${ev.guia}: ${ev.nuevo}`, ev.descripcion);
+      if (ev.nuevo === "Entregado") setTimeout(festejar, 1200);  // cuando el vehículo llega
     }
     if ($("#lista")) cargarEnvios().then(() => $(`#lista tr[data-guia="${ev.guia}"]`)?.classList.add("destello"));
   };

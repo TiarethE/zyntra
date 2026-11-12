@@ -5,19 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Zyntra · Envíos</title>
   <link rel="icon" href="/estatico/logo.svg" type="image/svg+xml">
+  <link rel="preload" href="/estatico/fuentes/archivo.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/estatico/app.css">
 </head>
 <body>
+  <!-- Dibujos reutilizables: vehículos por tipo de envío y la estrella de la bandera. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="v-nacional" viewBox="0 0 32 20">
+        <rect x="1" y="3" width="18" height="11" rx="2" fill="currentColor"/>
+        <path d="M20 6h6l4 4.5V14H20z" fill="currentColor"/>
+        <path d="M22 7.5h3.4l2.4 2.8H22z" fill="#fff" opacity=".85"/>
+        <circle cx="7" cy="15.5" r="2.8" fill="#10202e" stroke="#fff" stroke-width="1.2"/>
+        <circle cx="24.5" cy="15.5" r="2.8" fill="#10202e" stroke="#fff" stroke-width="1.2"/>
+      </symbol>
+      <symbol id="v-internacional" viewBox="0 0 32 20">
+        <path d="M2 10.6c0-.9.6-1.5 1.6-1.5H13L8.6 1.4h3.1l7.5 7.7h7.1c2.3 0 4.2.6 4.2 1.5s-1.9 1.5-4.2 1.5h-7.1l-7.5 7.7H8.6L13 12.1H3.6c-1 0-1.6-.6-1.6-1.5z" fill="currentColor"/>
+        <path d="M2.4 7.2h2.7l2 2.1H3.6z" fill="currentColor"/>
+      </symbol>
+      <symbol id="v-express" viewBox="0 0 32 20">
+        <path d="M1 7h7M3 10.5h6M1 14h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        <path d="M11 13.5h8.5l3-6.5h3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="11.5" y="5" width="7" height="6" rx="1.2" fill="currentColor"/>
+        <circle cx="13" cy="15" r="3.2" fill="#10202e" stroke="#fff" stroke-width="1.2"/>
+        <circle cx="27" cy="15" r="3.2" fill="#10202e" stroke="#fff" stroke-width="1.2"/>
+      </symbol>
+      <symbol id="estrella" viewBox="0 0 20 20">
+        <polygon points="10,1 12.4,7.3 19.1,7.6 13.9,11.8 15.6,18.3 10,14.6 4.4,18.3 6.1,11.8 0.9,7.6 7.6,7.3" fill="currentColor"/>
+      </symbol>
+      <symbol id="caja-vacia" viewBox="0 0 120 90">
+        <path d="M60 18 98 34v36L60 86 22 70V34z" fill="#e0f3f8"/>
+        <path d="M60 18 98 34 60 50 22 34z" fill="#fff" stroke="#0a7a99" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M22 34v36l38 16V50zM98 34v36L60 86V50z" fill="none" stroke="#0a7a99" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M41 26l38 16v10" fill="none" stroke="#ff9f1c" stroke-width="5" stroke-linejoin="round"/>
+        <use href="#estrella" x="86" y="2" width="16" height="16" color="#18b4d8"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <aside class="lateral">
-    <a class="marca" href="#/panel">
-      <img src="/estatico/logo.svg" alt="" width="34" height="34">
-      <span><strong>Zyntra</strong><small>Envíos desde Honduras</small></span>
+    <a class="marca" href="#/panel" aria-label="Zyntra, ir al panel">
+      <svg class="logo" viewBox="0 0 40 40" width="42" height="42" aria-hidden="true">
+        <circle class="logo-origen" cx="9" cy="11" r="3" fill="#18b4d8"/>
+        <path class="logo-ruta" d="M9 11H29L11 29H25" fill="none" stroke="#18b4d8" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
+        <use class="logo-estrella" href="#estrella" x="25" y="22.5" width="13" height="13" color="#ff9f1c"/>
+      </svg>
+      <span><strong>zyntra</strong><small>Envíos desde Honduras</small></span>
     </a>
     <nav>
-      <a href="#/panel" data-vista="panel"><span class="ico">▦</span>Panel</a>
-      <a href="#/nuevo" data-vista="nuevo"><span class="ico">＋</span>Nuevo envío</a>
-      <a href="#/rastrear" data-vista="rastrear"><span class="ico">⌖</span>Rastrear</a>
-      <a href="#/sistema" data-vista="sistema"><span class="ico">◉</span>Sistema</a>
+      <a href="#/panel" data-vista="panel"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v4h-6zM11 9h6v8h-6zM3 11h6v6H3z" fill="currentColor"/></svg>Panel</a>
+      <a href="#/nuevo" data-vista="nuevo"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 17 5.2v9.6L10 18l-7-3.2V5.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 7v6M7 10h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Nuevo envío</a>
+      <a href="#/rastrear" data-vista="rastrear"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.3 6-10A6 6 0 0 0 4 8c0 4.7 6 10 6 10z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="8" r="2.2" fill="currentColor"/></svg>Rastrear</a>
+      <a href="#/sistema" data-vista="sistema"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 11h3.5l2-5 3 9 2.5-6 1.5 2H18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Sistema</a>
     </nav>
     <div class="pie-lateral">
       <label class="interruptor">
@@ -31,7 +70,9 @@
   <main id="vista" tabindex="-1"></main>
 
   <div class="avisos" id="avisos" aria-live="polite"></div>
+  <div class="festejo" id="festejo" aria-hidden="true"></div>
 
+  <script src="/estatico/mapa.js"></script>
   <script src="/estatico/app.js"></script>
 </body>
 </html>

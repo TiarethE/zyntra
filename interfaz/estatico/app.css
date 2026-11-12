@@ -1,53 +1,69 @@
+@font-face {
+  font-family: "Archivo";
+  src: url("/estatico/fuentes/archivo.woff2") format("woff2");
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  font-display: swap;
+}
+
 :root {
-  --fondo: #f3f5f7;
+  /* Turquesa de la bandera de Honduras y el azul del Caribe de noche. */
+  --fondo: #eef3f6;
   --superficie: #ffffff;
-  --superficie-2: #f7f9fa;
-  --borde: #e1e6ea;
-  --texto: #15232d;
-  --texto-2: #5b6b76;
-  --texto-3: #8796a0;
-  --marca: #0b6e75;
-  --marca-fuerte: #08555b;
-  --marca-suave: #e3f2f2;
-  --acento: #f2b23e;
-  --lateral: #0f2a36;
-  --lateral-texto: #b9c8cf;
-  --ok: #1f8a4c;
-  --ok-suave: #e3f4ea;
-  --alerta: #b7791f;
-  --alerta-suave: #fbf0dc;
-  --error: #c0392b;
-  --error-suave: #fbe7e4;
-  --info: #2c6db5;
-  --info-suave: #e5eefa;
-  --violeta: #6b4fbb;
+  --superficie-2: #f5f8fa;
+  --borde: #dbe4ea;
+  --texto: #10202e;
+  --texto-2: #4f6272;
+  --texto-3: #82939f;
+  --marca: #0a7a99;
+  --marca-fuerte: #075f78;
+  --marca-suave: #e0f3f8;
+  --turquesa: #18b4d8;
+  --acento: #ff9f1c;
+  --lateral: #0d2236;
+  --lateral-texto: #a9bccb;
+  --mar: #dcebf2;
+  --tierra: #ffffff;
+  --ok: #1d8a52;
+  --ok-suave: #e1f4e9;
+  --alerta: #b06f12;
+  --alerta-suave: #fcefd9;
+  --error: #c4392b;
+  --error-suave: #fbe6e3;
+  --info: #2a67b0;
+  --info-suave: #e4edf9;
+  --violeta: #6a4fb8;
   --violeta-suave: #eee9fa;
-  --sombra: 0 1px 2px rgba(16, 36, 48, .06), 0 4px 16px rgba(16, 36, 48, .05);
-  --radio: 12px;
-  font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --sombra: 0 1px 2px rgba(13, 34, 54, .06), 0 6px 20px rgba(13, 34, 54, .05);
+  --radio: 14px;
+  --m-100: 100ms; --m-150: 150ms; --m-200: 200ms; --m-300: 300ms;
+  --sale: cubic-bezier(.16, 1, .3, 1);
+  --entra: cubic-bezier(.7, 0, .84, 0);
+  font-family: "Archivo", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
   color: var(--texto);
   background: var(--fondo);
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; background: var(--fondo); }
+body { margin: 0; min-height: 100vh; display: grid; grid-template-columns: 248px 1fr; background: var(--fondo); }
 a { color: var(--marca); }
-h1, h2, h3 { margin: 0; line-height: 1.2; }
-h1 { font-size: 1.6rem; letter-spacing: -.01em; }
-h2 { font-size: 1.05rem; }
+h1, h2, h3 { margin: 0; line-height: 1.15; font-stretch: 112%; }
+h1 { font-size: 1.85rem; font-weight: 760; letter-spacing: -.015em; }
+h2 { font-size: 1.05rem; font-weight: 700; }
 h3 { font-size: .95rem; }
 .num, .guia, td.monto { font-variant-numeric: tabular-nums; }
+.guia { font-stretch: 88%; font-weight: 650; letter-spacing: .01em; }
 
 /* ---------- Barra lateral ---------- */
 .lateral { background: var(--lateral); color: var(--lateral-texto); display: flex; flex-direction: column; padding: 20px 14px; position: sticky; top: 0; height: 100vh; }
-.marca { display: flex; gap: 10px; align-items: center; color: #fff; text-decoration: none; padding: 4px 8px 22px; }
-.marca strong { display: block; font-size: 1.2rem; letter-spacing: .01em; }
-.marca small { display: block; color: var(--lateral-texto); font-size: .75rem; }
+.marca { display: flex; gap: 12px; align-items: center; color: #fff; text-decoration: none; padding: 4px 8px 24px; }
+.marca strong { display: block; font-size: 1.45rem; font-weight: 800; font-stretch: 125%; letter-spacing: -.01em; line-height: 1; }
+.marca small { display: block; color: var(--lateral-texto); font-size: .74rem; margin-top: 4px; }
 nav { display: flex; flex-direction: column; gap: 2px; }
 nav a { display: flex; align-items: center; gap: 10px; color: var(--lateral-texto); text-decoration: none; padding: 10px 12px; border-radius: 8px; font-weight: 500; }
 nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
 nav a.activa { background: rgba(255,255,255,.1); color: #fff; box-shadow: inset 3px 0 0 var(--acento); }
-nav .ico { width: 20px; text-align: center; opacity: .85; }
+nav .ico { width: 20px; height: 20px; flex: none; opacity: .9; }
 .pie-lateral { margin-top: auto; display: flex; flex-direction: column; gap: 14px; padding: 0 8px; font-size: .85rem; }
 .conexion { display: flex; align-items: center; gap: 8px; color: var(--lateral-texto); }
 .conexion i { width: 8px; height: 8px; border-radius: 50%; background: var(--texto-3); }
@@ -112,9 +128,10 @@ input::placeholder { color: var(--texto-3); }
 .tipo:has(input:checked) { border-color: var(--marca); box-shadow: 0 0 0 3px var(--marca-suave); }
 .tipo:has(input:focus-visible) { outline: 2px solid var(--marca); outline-offset: 2px; }
 
-.paquete { border: 1px solid var(--borde); border-radius: 10px; padding: 12px; background: var(--superficie-2); margin-bottom: 10px; }
+.paquete { border: 1px solid var(--borde); border-radius: 10px; padding: 12px; background: var(--superficie-2); margin-bottom: 10px; display: grid; grid-template-columns: minmax(0, 1fr) 150px; column-gap: 16px; }
+.paquete > .cab-paq, .paquete > .fila, .paquete > .pie-paq { grid-column: 1; }
 .paquete .cab-paq { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 600; font-size: .9rem; }
-.paquete .fila { grid-template-columns: 2fr repeat(4, 1fr) 1.2fr; }
+.paquete .fila { grid-template-columns: 2fr repeat(2, 1fr); }
 .paquete .pie-paq { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .quitar { background: none; color: var(--texto-3); padding: 4px 8px; border: 0; }
 .quitar:hover { background: var(--error-suave); color: var(--error); }
@@ -126,7 +143,7 @@ input::placeholder { color: var(--texto-3); }
 .desglose td.monto { text-align: right; white-space: nowrap; }
 .total { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 16px; }
 .total span { color: var(--texto-2); font-weight: 600; }
-.total strong { font-size: 1.7rem; letter-spacing: -.02em; }
+.total strong { font-size: 1.9rem; font-weight: 780; font-stretch: 110%; letter-spacing: -.02em; }
 .nota { font-size: .8rem; color: var(--texto-3); margin-top: 10px; line-height: 1.45; }
 .error-form { background: var(--error-suave); color: var(--error); padding: 10px 12px; border-radius: 8px; font-size: .88rem; margin-bottom: 12px; }
 
@@ -251,6 +268,7 @@ body.con-patrones .explica { display: block; }
   .cotizacion { position: static; }
   .kpis, .metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .paquete .fila { grid-template-columns: repeat(3, 1fr); }
+  .portada .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   body { grid-template-columns: minmax(0, 1fr); }
@@ -271,4 +289,138 @@ body.con-patrones .explica { display: block; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* =========================================================
+   Identidad, ilustraciones y movimiento
+   ========================================================= */
+
+/* Logo: la ruta se traza una vez al abrir la aplicación y la estrella llega al final. */
+.logo { flex: none; overflow: visible; }
+.logo-ruta { stroke-dasharray: 100; stroke-dashoffset: 0; animation: trazar 900ms var(--sale) both 150ms; }
+.logo-origen { animation: aparecer-punto 300ms var(--sale) both; transform-origin: 9px 11px; }
+.logo-estrella { transform-box: fill-box; transform-origin: center; animation: llega-estrella 300ms var(--sale) both 950ms; }
+.marca:hover .logo-estrella { transform: rotate(72deg); transition: transform var(--m-300) var(--sale); }
+@keyframes trazar { from { stroke-dashoffset: 100; } }
+@keyframes aparecer-punto { from { opacity: 0; transform: scale(.2); } }
+@keyframes llega-estrella { from { opacity: 0; transform: scale(.3) rotate(-72deg); } }
+
+/* Cambio de pantalla: entra con un desplazamiento corto. */
+main.entrando > * { animation: entrar-vista var(--m-300) var(--sale) both; }
+main.entrando > *:nth-child(2) { animation-delay: 50ms; }
+main.entrando > *:nth-child(3) { animation-delay: 100ms; }
+@keyframes entrar-vista { from { opacity: 0; transform: translateY(8px); } }
+
+/* Vehículos (ilustraciones por tipo de envío) */
+.vehiculo { width: 30px; height: 19px; flex: none; vertical-align: middle; }
+.vehiculo.grande { width: 52px; height: 33px; }
+.vehiculo.nacional, .m-vehiculo.nacional { color: var(--marca); }
+.vehiculo.express, .m-vehiculo.express { color: #e8860b; }
+.vehiculo.internacional, .m-vehiculo.internacional { color: var(--violeta); }
+.con-icono { display: flex; align-items: center; gap: 12px; }
+.leyenda { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; font-size: .8rem; color: var(--texto-2); }
+.leyenda .vehiculo { width: 24px; height: 15px; margin-left: 6px; }
+button .vehiculo { width: 24px; height: 15px; }
+button.secundario .vehiculo { color: var(--marca); }
+
+/* Tarjetas de tipo de envío: el vehículo arranca al elegirlo. */
+.tipo .vehiculo { display: block; margin-bottom: 10px; transition: transform var(--m-300) var(--sale); }
+.tipo:hover .vehiculo { transform: translateX(4px); }
+.tipo:has(input:checked) .vehiculo { transform: translateX(10px); }
+.tipo:has(input:checked) { background: linear-gradient(var(--marca-suave), var(--superficie) 70%); }
+
+/* Mapa */
+.caja-mapa { position: relative; }
+.mapa { display: block; width: 100%; height: auto; }
+.m-mar { fill: var(--mar); }
+.m-reticula { stroke: #c9dde7; stroke-width: 1; stroke-dasharray: 2 6; }
+.m-tierra { fill: var(--tierra); stroke: #8fcfe0; stroke-width: 1.6; stroke-linejoin: round; }
+.m-ciudad circle { fill: var(--lateral); stroke: #fff; stroke-width: 2; }
+.m-ciudad.sede circle { fill: var(--turquesa); }
+.m-ciudad.menor circle { fill: #9fb3c1; stroke-width: 1.5; }
+.m-ciudad text { font-size: 13px; font-weight: 650; fill: var(--texto); paint-order: stroke; stroke: var(--tierra); stroke-width: 4px; stroke-linejoin: round; }
+.m-ruta { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 0; opacity: .85; animation: trazar 1200ms var(--sale) both; animation-delay: var(--retraso, 0ms); }
+.m-ruta.nacional { stroke: var(--marca); }
+.m-ruta.express { stroke: #e8860b; }
+.m-ruta.internacional { stroke: var(--violeta); stroke-dasharray: 3 4; animation: none; }
+.m-ruta.fondo { stroke: #b9cfda; stroke-dasharray: 4 6; animation: none; opacity: 1; }
+.m-ruta.hecha { stroke-width: 4; animation: none; opacity: 1; }
+.m-ruta.hecha.internacional { stroke-dasharray: 0 100; }
+.m-salida { font-size: 12px; font-weight: 600; fill: var(--violeta); }
+.m-vehiculo { cursor: pointer; filter: drop-shadow(0 2px 2px rgba(13, 34, 54, .25)); }
+.m-etiqueta circle { stroke: #fff; stroke-width: 3; }
+.m-etiqueta.origen circle { fill: var(--lateral); }
+.m-etiqueta.destino circle { fill: var(--acento); }
+.m-etiqueta text { font-size: 15px; font-weight: 700; font-stretch: 110%; fill: var(--texto); paint-order: stroke; stroke: var(--mar); stroke-width: 5px; stroke-linejoin: round; }
+.tarjeta-mapa .cuerpo { padding-top: 12px; }
+.caja-mapa.ruta { margin: 0 22px; border-radius: 14px; overflow: hidden; background: var(--mar); }
+.caja-mapa.ruta .m-mar { rx: 0; }
+.caja-mapa.ruta .mapa { max-height: 320px; }
+.caja-mapa.chica { margin-bottom: 14px; border-radius: 12px; overflow: hidden; }
+.caja-mapa.chica .m-ciudad text { display: none; }
+
+/* Panel: mapa a la izquierda, indicadores a la derecha */
+.portada { margin-bottom: 18px; }
+.portada .kpis { grid-template-columns: minmax(0, 1fr); margin: 0; grid-auto-rows: 1fr; }
+.kpi { position: relative; overflow: hidden; }
+.kpi .valor { font-size: 2.1rem; font-weight: 780; font-stretch: 115%; }
+.kpi.cambio .valor { animation: resalta var(--m-300) var(--sale); }
+@keyframes resalta { from { color: var(--turquesa); transform: translateY(-3px); } }
+
+/* Paquete en perspectiva */
+.vista-caja { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+.vista-caja svg { width: 100%; height: auto; display: block; }
+.vista-caja.pop svg { animation: pop var(--m-200) var(--sale); transform-origin: 50% 90%; }
+@keyframes pop { from { transform: scale(.94); opacity: .6; } }
+.cara { stroke: #8a5a2b; stroke-width: 1; stroke-linejoin: round; }
+.cara.arriba { fill: #f0cf9f; }
+.cara.izq { fill: #d9a566; }
+.cara.der { fill: #c48a4b; }
+.cinta { stroke: var(--turquesa); stroke-width: 5; stroke-linecap: butt; opacity: .9; }
+.sombra-caja { fill: rgba(13, 34, 54, .12); }
+.fantasma .cara { fill: #eef3f6; stroke: #b9cfda; stroke-dasharray: 3 3; }
+.fantasma .cinta { opacity: .25; }
+.sello-fragil rect { fill: #fff; stroke: var(--error); stroke-width: 1.2; }
+.sello-fragil text { font-size: 7px; font-weight: 800; fill: var(--error); letter-spacing: .04em; }
+.peso-caja { font-size: 11px; font-weight: 650; fill: var(--texto-2); }
+
+/* Cotización: cada capa del costo entra apilándose */
+.desglose tr.capa-nueva { animation: capa var(--m-300) var(--sale) both; }
+@keyframes capa { from { opacity: 0; transform: translateY(-6px); background: #fff4d6; } }
+
+/* Estados vacíos con ilustración */
+.vacio .ilustracion { width: 110px; height: 82px; display: block; margin: 0 auto 8px; }
+.vacio p { margin: 0 auto; max-width: 300px; line-height: 1.45; }
+
+/* Festejo al entregar: cinco estrellas, como la bandera */
+.festejo { position: fixed; left: 50%; top: 38%; width: 0; height: 0; pointer-events: none; z-index: 60; }
+.festejo span { position: absolute; width: 34px; height: 34px; margin: -17px; color: var(--turquesa); animation: estrella-sale 1100ms var(--sale) both; }
+.festejo span:nth-child(even) { color: var(--acento); }
+.festejo svg { width: 100%; height: 100%; display: block; }
+@keyframes estrella-sale {
+  0% { opacity: 0; transform: translate(0, 0) scale(.3) rotate(0); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.1) rotate(144deg); }
+}
+
+/* Filas y tarjetas que responden al cursor */
+.tabla tbody tr .vehiculo { transition: transform var(--m-200) var(--sale); }
+.tabla tbody tr:hover .vehiculo { transform: translateX(4px); }
+nav a { transition: background var(--m-150) var(--sale), color var(--m-150) var(--sale); }
+.aviso { animation: entrar var(--m-300) var(--sale); }
+
+@media (max-width: 760px) {
+  .paquete { grid-template-columns: minmax(0, 1fr); }
+  .vista-caja { grid-column: 1; grid-row: auto; max-width: 160px; margin: 6px auto 0; }
+  .caja-mapa.ruta { margin: 0 12px; }
+  .m-ciudad text { font-size: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-ruta { stroke-dashoffset: 0; }
+}
+@media (max-width: 1100px) {
+  .portada .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
+}
+@media (max-width: 760px) {
+  .kpi .valor { font-size: 1.45rem; white-space: nowrap; }
 }

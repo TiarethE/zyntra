@@ -96,6 +96,13 @@ class TestApi(unittest.TestCase):
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn("Zyntra", respuesta.text)
 
+    def test_los_archivos_de_la_pagina_se_sirven_sin_internet(self):
+        for ruta in ("/estatico/app.js", "/estatico/mapa.js", "/estatico/app.css",
+                     "/estatico/logo.svg", "/estatico/fuentes/archivo.woff2"):
+            with self.subTest(ruta=ruta):
+                self.assertEqual(self.cliente.get(ruta).status_code, 200)
+        self.assertNotIn("https://", self.cliente.get("/").text)
+
     def test_cotizar_usa_las_tarifas_y_los_decoradores(self):
         respuesta = self.cliente.post("/api/cotizar", json=envio_nacional(
             asegurar=True, paquetes=[{**PAQUETE, "valor_declarado": 1000, "fragil": True}]))
