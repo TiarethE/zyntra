@@ -70,6 +70,16 @@ class PanelRastreo <<ConcreteObserver>> {
   +ultimo_estado : dict[str, CambioEstado]
   +notificar(evento : CambioEstado)
 }
+class TransmisorEnVivo <<ConcreteObserver>> {
+  +CAPACIDAD_POR_PANTALLA : int
+  -_pantallas : set[asyncio.Queue[CambioEstado]]
+  +omitidos : int
+  +conectadas : int
+  --
+  +conectar() : asyncio.Queue[CambioEstado]
+  +desconectar(cola : asyncio.Queue[CambioEstado])
+  +notificar(evento : CambioEstado)
+}
 class CambioEstado <<Event>> {
   +numero_guia : str
   +anterior : NombreEstado
@@ -99,6 +109,7 @@ class GestorEnvios {
   +obtener(numero_guia : str) : Envio
   +cambiar_estado(numero_guia : str, destino : NombreEstado, **detalles) : RegistroRastreo
   +rastrear(numero_guia : str) : tuple[RegistroRastreo, ...]
+  +listar() : list[Envio]
 }
 
 class EnvioNoEncontrado <<Exception>>
@@ -106,6 +117,7 @@ GestorEnvios ..> EnvioNoEncontrado : lanza
 BusEventos o--> "0..*" Suscriptor : notifica
 Suscriptor <|-- NotificadorCliente
 Suscriptor <|-- PanelRastreo
+Suscriptor <|-- TransmisorEnVivo
 GestorEnvios --> "0..1" BusEventos : publica en
 GestorEnvios ..> CambioEstado : crea
 BusEventos ..> CambioEstado : encola

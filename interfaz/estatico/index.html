@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zyntra · Envíos</title>
+  <link rel="icon" href="/estatico/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/estatico/app.css">
+</head>
+<body>
+  <aside class="lateral">
+    <a class="marca" href="#/panel">
+      <img src="/estatico/logo.svg" alt="" width="34" height="34">
+      <span><strong>Zyntra</strong><small>Envíos desde Honduras</small></span>
+    </a>
+    <nav>
+      <a href="#/panel" data-vista="panel"><span class="ico">▦</span>Panel</a>
+      <a href="#/nuevo" data-vista="nuevo"><span class="ico">＋</span>Nuevo envío</a>
+      <a href="#/rastrear" data-vista="rastrear"><span class="ico">⌖</span>Rastrear</a>
+      <a href="#/sistema" data-vista="sistema"><span class="ico">◉</span>Sistema</a>
+    </nav>
+    <div class="pie-lateral">
+      <label class="interruptor">
+        <input type="checkbox" id="modo-patrones">
+        <span></span>Mostrar patrones
+      </label>
+      <div class="conexion" id="conexion"><i></i><span>Conectando…</span></div>
+    </div>
+  </aside>
+
+  <main id="vista" tabindex="-1"></main>
+
+  <div class="avisos" id="avisos" aria-live="polite"></div>
+
+  <script src="/estatico/app.js"></script>
+</body>
+</html>

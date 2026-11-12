@@ -34,3 +34,38 @@ class PanelRastreo(Suscriptor):
 
     async def notificar(self, evento: CambioEstado) -> None:
         self.ultimo_estado[evento.numero_guia] = evento
+
+
+class TransmisorEnVivo(Suscriptor):
+    """Reenvía cada cambio a las pantallas abiertas (interfaz web).
+
+    Cada pantalla conectada recibe su propia cola. Si una pantalla no lee
+    a tiempo y su cola se llena, se le salta el aviso: una pantalla lenta
+    nunca frena al bus ni a las demás.
+    """
+
+    nombre = "transmisor en vivo"
+    CAPACIDAD_POR_PANTALLA = 100
+
+    def __init__(self) -> None:
+        self._pantallas: set[asyncio.Queue[CambioEstado]] = set()
+        self.omitidos = 0
+
+    @property
+    def conectadas(self) -> int:
+        return len(self._pantallas)
+
+    def conectar(self) -> asyncio.Queue[CambioEstado]:
+        cola: asyncio.Queue[CambioEstado] = asyncio.Queue(self.CAPACIDAD_POR_PANTALLA)
+        self._pantallas.add(cola)
+        return cola
+
+    def desconectar(self, cola: asyncio.Queue[CambioEstado]) -> None:
+        self._pantallas.discard(cola)
+
+    async def notificar(self, evento: CambioEstado) -> None:
+        for cola in list(self._pantallas):
+            try:
+                cola.put_nowait(evento)
+            except asyncio.QueueFull:
+                self.omitidos += 1

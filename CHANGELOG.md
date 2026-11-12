@@ -4,6 +4,12 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ## [Sin publicar]
 
+### Agregado
+- Interfaz web (`python -m interfaz`, FastAPI): panel de envíos, nuevo envío con cotización en vivo, rastreo, detalle con cambios de estado y simulación de recorrido, y monitor del módulo de respuesta con simulación de caída del servicio de SMS (#20).
+- Suscriptor `TransmisorEnVivo`: reenvía cada cambio de estado a las pantallas abiertas por WebSocket.
+- `GestorEnvios.listar()` para mostrar todos los envíos.
+- `requirements.txt` (solo para la interfaz) y 12 pruebas nuevas en `tests/test_interfaz.py`; GitHub Actions instala las dependencias.
+
 ## [2.0.0] - 2026-11-10
 
 Segundo Parcial: módulo de respuesta en tiempo real y gestión de configuración.
