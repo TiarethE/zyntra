@@ -7,6 +7,10 @@
   <link rel="icon" href="/estatico/logo.svg" type="image/svg+xml">
   <link rel="preload" href="/estatico/fuentes/archivo.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/estatico/app.css">
+  <script>
+    // Aplica el tema guardado antes de pintar, para que no parpadee.
+    try { const t = localStorage.getItem("zyntra-tema"); if (t) document.documentElement.dataset.theme = t; } catch {}
+  </script>
 </head>
 <body>
   <!-- Dibujos reutilizables: vehículos por tipo de envío y la estrella de la bandera. -->
@@ -34,43 +38,69 @@
         <polygon points="10,1 12.4,7.3 19.1,7.6 13.9,11.8 15.6,18.3 10,14.6 4.4,18.3 6.1,11.8 0.9,7.6 7.6,7.3" fill="currentColor"/>
       </symbol>
       <symbol id="caja-vacia" viewBox="0 0 120 90">
-        <path d="M60 18 98 34v36L60 86 22 70V34z" fill="#e0f3f8"/>
-        <path d="M60 18 98 34 60 50 22 34z" fill="#fff" stroke="#0a7a99" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M22 34v36l38 16V50zM98 34v36L60 86V50z" fill="none" stroke="#0a7a99" stroke-width="2" stroke-linejoin="round"/>
-        <path d="M41 26l38 16v10" fill="none" stroke="#ff9f1c" stroke-width="5" stroke-linejoin="round"/>
-        <use href="#estrella" x="86" y="2" width="16" height="16" color="#18b4d8"/>
+        <path d="M60 18 98 34v36L60 86 22 70V34z" fill="var(--marca-suave)"/>
+        <path d="M60 18 98 34 60 50 22 34z" fill="var(--superficie)" stroke="var(--marca)" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M22 34v36l38 16V50zM98 34v36L60 86V50z" fill="none" stroke="var(--marca)" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M41 26l38 16v10" fill="none" stroke="var(--acento)" stroke-width="5" stroke-linejoin="round"/>
+        <use href="#estrella" x="86" y="2" width="16" height="16" color="var(--turquesa)"/>
       </symbol>
     </defs>
   </svg>
 
-  <aside class="lateral">
-    <a class="marca" href="#/panel" aria-label="Zyntra, ir al panel">
-      <svg class="logo" viewBox="0 0 40 40" width="42" height="42" aria-hidden="true">
-        <circle class="logo-origen" cx="9" cy="11" r="3" fill="#18b4d8"/>
-        <path class="logo-ruta" d="M9 11H29L11 29H25" fill="none" stroke="#18b4d8" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
-        <use class="logo-estrella" href="#estrella" x="25" y="22.5" width="13" height="13" color="#ff9f1c"/>
-      </svg>
-      <span><strong>zyntra</strong><small>Envíos desde Honduras</small></span>
-    </a>
-    <nav>
-      <a href="#/panel" data-vista="panel"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 3h6v6H3zM11 3h6v4h-6zM11 9h6v8h-6zM3 11h6v6H3z" fill="currentColor"/></svg>Panel</a>
-      <a href="#/nuevo" data-vista="nuevo"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2 17 5.2v9.6L10 18l-7-3.2V5.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 7v6M7 10h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Nuevo envío</a>
-      <a href="#/rastrear" data-vista="rastrear"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 18s6-5.3 6-10A6 6 0 0 0 4 8c0 4.7 6 10 6 10z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="8" r="2.2" fill="currentColor"/></svg>Rastrear</a>
-      <a href="#/sistema" data-vista="sistema"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 11h3.5l2-5 3 9 2.5-6 1.5 2H18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Sistema</a>
-    </nav>
-    <div class="pie-lateral">
-      <label class="interruptor">
-        <input type="checkbox" id="modo-patrones">
-        <span></span>Mostrar patrones
-      </label>
-      <div class="conexion" id="conexion"><i></i><span>Conectando…</span></div>
+  <a class="saltar" href="#vista">Ir al contenido</a>
+
+  <div class="app" id="app">
+    <aside class="lateral" id="lateral">
+      <a class="marca" href="#/panel" aria-label="Zyntra, ir al panel">
+        <svg class="logo" viewBox="0 0 40 40" width="38" height="38" aria-hidden="true">
+          <circle class="logo-origen" cx="9" cy="11" r="3" fill="#18b4d8"/>
+          <path class="logo-ruta" d="M9 11H29L11 29H25" fill="none" stroke="#18b4d8" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" pathLength="100"/>
+          <use class="logo-estrella" href="#estrella" x="25" y="22.5" width="13" height="13" color="#ff9f1c"/>
+        </svg>
+        <span class="texto-marca"><strong>zyntra</strong><small>Envíos desde Honduras</small></span>
+      </a>
+      <nav id="menu" aria-label="Secciones"></nav>
+      <div class="pie-lateral">
+        <div class="tarjeta-sucursal">
+          <span class="avatar" aria-hidden="true">TC</span>
+          <span class="texto-marca"><strong>Sucursal Tegucigalpa</strong><small>Operación</small></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="principal">
+      <header class="barra" id="barra">
+        <button class="icono-btn solo-movil" id="abrir-menu" aria-label="Abrir menú"></button>
+        <button class="buscador-global" id="abrir-paleta" type="button">
+          <span class="ico-buscar" aria-hidden="true"></span>
+          <span>Buscar guía, cliente o acción</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <div class="acciones-barra">
+          <span class="en-vivo" id="conexion" title="Conexión en tiempo real"><i></i><span>Conectando</span></span>
+          <label class="interruptor-chico" title="Marca qué patrón de diseño trabaja en cada parte de la pantalla">
+            <input type="checkbox" id="modo-patrones"><span></span>Patrones
+          </label>
+          <button class="icono-btn" id="tema" aria-label="Cambiar entre modo claro y oscuro"></button>
+          <div class="campana">
+            <button class="icono-btn" id="abrir-avisos" aria-label="Movimientos recientes" aria-expanded="false" aria-controls="panel-avisos"></button>
+            <span class="contador" id="no-leidos" hidden>0</span>
+            <div class="menu-flotante" id="panel-avisos" hidden></div>
+          </div>
+        </div>
+      </header>
+
+      <main id="vista" tabindex="-1"></main>
     </div>
-  </aside>
+  </div>
 
-  <main id="vista" tabindex="-1"></main>
-
+  <div class="cortina" id="cortina" hidden></div>
+  <aside class="cajon" id="cajon" role="dialog" aria-modal="true" aria-labelledby="cajon-titulo" hidden></aside>
+  <div class="paleta" id="paleta" role="dialog" aria-modal="true" aria-label="Buscador rápido" hidden></div>
   <div class="avisos" id="avisos" aria-live="polite"></div>
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
   <div class="festejo" id="festejo" aria-hidden="true"></div>
+  <div class="imprimible" id="imprimible" aria-hidden="true"></div>
 
   <script src="/estatico/mapa.js"></script>
   <script src="/estatico/app.js"></script>
